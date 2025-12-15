@@ -1,0 +1,24 @@
+{
+    "name": "OVERNIGHT_3D",
+    "description": "Beli sore (close) saham gap up kuat + volume tinggi + momentum sehat, hold max 3 hari. Ideal untuk swing overnight Indonesia.",
+    "entry": [
+        "CLOSE > OPEN * 1.015",
+        "VOLUME > VMA20 * 2",
+        "RSI14 > 55",
+        "RSI14 < 75",
+        "CLOSE > MA20",
+        "MA20 > MA50",
+        "STOCH_K > 20",
+        "STOCH_K < 80",
+        "CLOSE > BB_LOWER * 1.02",
+        "PRICE_RETURN_1D_PCT > 1",
+        "MACD_LINE > MACD_SIGNAL"
+    ],
+    "tp": [
+        "PRICE + (ATR14 * 3.5)"
+    ],
+    "sl": [
+        "PRICE - ATR14 * 1.8"
+    ],
+    "max_hold_days": 3
+}
