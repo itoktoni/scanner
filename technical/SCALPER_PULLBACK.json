@@ -1,0 +1,18 @@
+{
+  "name": "SCALPER_PULLBACK",
+  "description": "Scalper trend naik + pullback kecil volume tinggi, max hold 3 hari.",
+  "entry": [
+    "CLOSE > MA20",
+    "CLOSE > MA200",
+    "MA20 > MA200",
+    "RSI14 >= 45",
+    "RSI14 <= 70"
+  ],
+  "tp": [
+    "PRICE + (ATR14 * 3)"
+  ],
+  "sl": [
+    "PRICE - ATR14 * 2"
+  ],
+  "max_hold_days": 30
+}
