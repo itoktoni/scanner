@@ -1,0 +1,19 @@
+{
+    "name": "BOW_SUPPORT_REBOUND",
+    "description": "Strategi Buy On Weakness. Mencari saham uptrend yang sedang koreksi (Oversold) dan mulai memantul (Golden Cross Stochastic) dengan candle hijau.",
+    "entry": [
+        "MA20 > MA50",
+        "STOCH_K <= 30",
+        "STOCH_K > STOCH_D",
+        "CLOSE > OPEN",
+        "VOLUME > VMA5",
+        "CLOSE > SUPPORT"
+    ],
+    "tp": [
+        "PRICE + ATR14 * 1"
+    ],
+    "sl": [
+        "PRICE - ATR14 * 1.5"
+    ],
+    "max_hold_days": 30
+}

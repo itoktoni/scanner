@@ -40,6 +40,7 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["HIGH"] = df["High"]
     df["LOW"] = df["Low"]
     df["CLOSE"] = df["Close"]
+    df["PRICE"] = df["Close"]
     df["VOLUME"] = df["Volume"]
 
     # Previous day's closing price

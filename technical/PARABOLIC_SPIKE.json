@@ -1,0 +1,19 @@
+{
+  "name": "PARABOLIC_SPIKE",
+  "description": "Parabolic Spike strategy - MA5 >= 1.1x MA20 (Gap 10%), harga naik minimal 1%, volume meningkat, dengan TP 3x risk dan SL 2x ATR",
+  "entry": [
+    "MA5 >= MA20 * 1.1",
+    "PRICE_RETURN_1D_PCT >= 1.0",
+    "VOLUME >= VMA20",
+    "CLOSE > OPEN",
+    "CLOSE > MA5",
+    "CLOSE > MA20"
+  ],
+  "tp": [
+    "PRICE + (ATR14 * 6.0)"
+  ],
+  "sl": [
+    "PRICE - (ATR14 * 2.0)"
+  ],
+  "max_hold_days": 10
+}

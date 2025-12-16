@@ -1,5 +1,5 @@
 {
-    "name": "OVERNIGHT_3D",
+    "name": "Beli Sore Jual Pagi",
     "description": "Beli sore (close) saham gap up kuat + volume tinggi + momentum sehat, hold max 3 hari. Ideal untuk swing overnight Indonesia.",
     "entry": [
         "CLOSE > OPEN * 1.015",
@@ -15,7 +15,7 @@
         "MACD_LINE > MACD_SIGNAL"
     ],
     "tp": [
-        "PRICE + (ATR14 * 3.5)"
+        "RESISTANCE"
     ],
     "sl": [
         "PRICE - ATR14 * 1.8"

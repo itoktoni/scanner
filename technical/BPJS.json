@@ -1,0 +1,20 @@
+{
+    "name": "DAYTRADE_GAPUP",
+    "description": "Saham gap up pagi dengan momentum kuat, volume tinggi, beli pagi jual sore untuk cuan intraday.",
+    "entry": [
+        "OPEN > CLOSE * 1.02",
+        "VOLUME > VMA10 * 1.5",
+        "CLOSE > OPEN",
+        "RSI14 > 60",
+        "STOCH_K > 80",
+        "MACD_LINE > MACD_SIGNAL",
+        "PRICE_RETURN_1D_PCT > 2"
+    ],
+    "tp": [
+        "OPEN + (ATR14 * 2)"
+    ],
+    "sl": [
+        "OPEN - (ATR14 * 1)"
+    ],
+    "max_hold_days": 0
+}

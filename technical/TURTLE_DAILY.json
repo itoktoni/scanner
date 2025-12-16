@@ -1,0 +1,15 @@
+{
+  "name": "TURTLE_DAILY",
+  "description": "Turtle Strategy (Daily) - Breakout above 20-day high with trailing stop at 10-day low, EMA200 uptrend filter",
+  "entry": [
+    "CLOSE > MA200",
+    "CLOSE > HH20"
+  ],
+  "tp": [
+    "PRICE + (ATR14 * 3.0)"
+  ],
+  "sl": [
+    "PRICE - (ATR14 * 2.0)"
+  ],
+  "max_hold_days": 60
+}

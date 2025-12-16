@@ -1,0 +1,76 @@
+Available Technical Indicators
+Price-Based Indicators
+OPEN - Opening price
+HIGH - Highest price
+LOW - Lowest price
+CLOSE - Closing price
+VOLUME - Trading volume
+Moving Averages
+MA5 - 5-period Simple Moving Average
+MA10 - 10-period Simple Moving Average
+MA20 - 20-period Simple Moving Average
+MA50 - 50-period Simple Moving Average
+MA100 - 100-period Simple Moving Average
+MA200 - 200-period Simple Moving Average
+VMA5 - 5-period Volume Moving Average
+VMA10 - 10-period Volume Moving Average
+VMA20 - 20-period Volume Moving Average
+Momentum Indicators
+RSI14 - 14-period Relative Strength Index
+STOCH_K - Fast Stochastic %K line
+STOCH_D - Slow Stochastic %D line
+MACD_LINE - MACD line (12,26)
+MACD_SIGNAL - MACD signal line (9-period EMA of MACD)
+MACD_HISTOGRAM - MACD histogram
+Volatility Indicators
+ATR14 - 14-period Average True Range
+BB_UPPER - Bollinger Band Upper Line (20,2)
+BB_MIDDLE - Bollinger Band Middle Line (20-period SMA)
+BB_LOWER - Bollinger Band Lower Line (20,2)
+BB_WIDTH - Bollinger Band Width
+BB_PERCENT_B - Bollinger Band %B
+Price Patterns & Levels
+HH3 - Highest High over 3 periods
+LL3 - Lowest Low over 3 periods
+HH20 - Highest High over 20 periods
+LL20 - Lowest Low over 20 periods
+SUPPORT - Dynamic support level
+RESISTANCE - Dynamic resistance level
+Price Returns
+PRICE_RETURN_1D_PCT - 1-day price return percentage
+PRICE_RETURN_7D_PCT - 7-day price return percentage
+PRICE_RETURN_30D_PCT - 30-day price return percentage
+PRICE_RETURN_50D_PCT - 50-day price return percentage
+PRICE_RETURN_100D_PCT - 100-day price return percentage
+Fibonacci Retracement Levels
+FIB_236 - 23.6% Fibonacci retracement level
+FIB_382 - 38.2% Fibonacci retracement level
+FIB_50 - 50% Fibonacci retracement level
+FIB_618 - 61.8% Fibonacci retracement level
+These indicators can be used in strategy condition expressions like:
+"CLOSE > MA20"
+"RSI14 >= 50"
+"VOLUME > VMA20"
+"CLOSE > BB_UPPER"
+"MACD_LINE > MACD_SIGNAL"
+
+eg. json
+
+{
+  "name": "SCALPER_PULLBACK",
+  "description": "Scalper trend naik + pullback kecil volume tinggi, max hold 3 hari.",
+  "entry": [
+    "CLOSE > MA20",
+    "CLOSE > MA200",
+    "MA20 > MA200",
+    "RSI14 >= 45",
+    "RSI14 <= 70"
+  ],
+  "tp": [
+    "PRICE + (ATR14 * 3)"
+  ],
+  "sl": [
+    "PRICE - ATR14 * 2"
+  ],
+  "max_hold_days": 30
+}
