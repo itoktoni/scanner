@@ -1,0 +1,18 @@
+{
+  "name": "TREND_UP_DISCOUNT",
+  "description": "Trend Major Naik (MA50 > MA200), tapi harga sedang koreksi dalam (RSI < 30 + Stoch < 20). Buy the bottom.",
+  "entry": [
+    "MA50 > MA200",
+    "CLOSE > MA200",
+    "RSI14 < 30",
+    "STOCH_K < 20",
+    "CLOSE < MA20"
+  ],
+  "tp": [
+    "MA20"
+  ],
+  "sl": [
+    "PRICE - (ATR14 * 2)"
+  ],
+  "max_hold_days": 10
+}
