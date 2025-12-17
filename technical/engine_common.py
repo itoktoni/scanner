@@ -22,6 +22,8 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     - MACD (12, 26, 9)
     - BOLLINGER BANDS (20, 2)
     - STOCHASTIC OSCILLATOR (14, 3)
+    - VWAP (Volume Weighted Average Price)
+    - VWMA (Volume Weighted Moving Average)
     """
     df = df.copy()
 
@@ -175,5 +177,22 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # Pendekatan sederhana: gunakan moving average sebagai pendekatan support/resistance dinamis
     df["SUPPORT"] = df["MA20"] - (df["ATR14"] * 1.5)  # Support dinamis berdasarkan MA20 dan ATR
     df["RESISTANCE"] = df["MA20"] + (df["ATR14"] * 1.5)   # Resistance dinamis berdasarkan MA20 dan ATR
+
+    # VWAP (Volume Weighted Average Price)
+    # Menghitung typical price sebagai rata-rata dari high, low, dan close
+    typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
+    # Menghitung cumulative sum dari (typical price * volume) dan cumulative sum dari volume
+    cum_price_volume = (typical_price * df["Volume"]).cumsum()
+    cum_volume = df["Volume"].cumsum()
+    # VWAP adalah cumulative sum dari (price * volume) dibagi cumulative sum dari volume
+    df["VWAP"] = cum_price_volume / cum_volume
+
+    # VWMA (Volume Weighted Moving Average)
+    # Menghitung VWMA menggunakan rolling window dari typical price dan volume
+    # Menggunakan window 20 hari sebagai default
+    window = 20
+    price_volume_sum = (typical_price * df["Volume"]).rolling(window=window).sum()
+    volume_sum = df["Volume"].rolling(window=window).sum()
+    df["VWMA"] = price_volume_sum / volume_sum
 
     return df

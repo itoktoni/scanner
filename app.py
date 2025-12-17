@@ -132,8 +132,10 @@ def index():
                 start = today - dt.timedelta(days=90)
             elif bt_period == "6m":
                 start = today - dt.timedelta(days=180)
-            else:
+            elif bt_period == "12m":
                 start = today - dt.timedelta(days=365)
+            else:
+                start = today - dt.timedelta(days=365*2)
 
             trades, summary = json_backtest(
                 df,

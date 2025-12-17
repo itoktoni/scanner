@@ -53,6 +53,7 @@ These indicators can be used in strategy condition expressions like:
 "VOLUME > VMA20"
 "CLOSE > BB_UPPER"
 "MACD_LINE > MACD_SIGNAL"
+FREQUENCY_SPIKE
 
 eg. json
 

@@ -1,21 +1,23 @@
 {
-    "name": "sebelom breakout",
+    "name": "BEFORE BREAKOUT",
     "description": "Beli sore (close) saham gap up kuat + volume tinggi + momentum sehat, hold max 3 hari. Ideal untuk swing overnight Indonesia.",
     "entry": [
         "RSI14 > 55",
         "RSI14 < 85",
-        "VOLUME > VMA20 - (VMA20 * 0.3)",
-        "VOLUME < VMA20 + (VMA20 * 0.5)",
-        "PRICE_RETURN_1D_PCT > 0.5",
+        "VOLUME > VMA20 - (VMA20 * 0.05)",
+        "VOLUME <= VMA20 + (VMA20 * 0.2)",
         "PRICE > MA20",
+        "PRICE > MA100",
         "PRICE > MA200",
+        "PRICE <= VWAP + (VWAP * 0.5)",
+        "FREQUENCY_SPIKE > 0",
         "MA20 > MA200"
     ],
     "tp": [
-        "PRICE + (PRICE * 0.3)"
+        "PRICE + (ATR14 * 3)"
     ],
     "sl": [
-        "PRICE - ATR14 * 3"
+        "PRICE - (PRICE * 0.05)"
     ],
-    "max_hold_days": 10
+    "max_hold_days": 3
 }
