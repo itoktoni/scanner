@@ -1,4 +1,4 @@
-# technical/generic_json_strategy.py
+# engine/generic_json_strategy.py
 import os
 import json
 import pandas as pd
@@ -6,7 +6,7 @@ import numpy as np
 
 from .engine_common import add_common_indicators
 
-TECHNICAL_DIR = os.path.dirname(__file__)
+TECHNICAL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "technical")
 
 
 def load_all_json_strategies():

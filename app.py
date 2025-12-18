@@ -6,7 +6,7 @@ import datetime as dt
 import yfinance as yf
 import pandas as pd
 
-from technical.generic_json_strategy import (
+from engine.generic_json_strategy import (
     load_all_json_strategies,
     get_entry_sl_tp_row,
     backtest as json_backtest,
@@ -48,7 +48,8 @@ def parse_tickers(raw: str | None, all_tickers: list[dict]):
 
 
 def get_price_data(ticker, period="2y"):
-    df = yf.download(ticker, period=period)
+    print(f"[*********************100%***********************]  1 of 1 {ticker} completed")
+    df = yf.download(ticker, period=period, auto_adjust=False, progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df = df.xs(ticker, level=1, axis=1)
     return df
