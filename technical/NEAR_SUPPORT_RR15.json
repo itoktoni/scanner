@@ -1,0 +1,21 @@
+{
+    "name": "NEAR_SUPPORT_RR15",
+    "description": "Buy dekat support dinamis (MA20-ATR*1.5). SL max 2% jika jebol support, TP 3%. Daytrade/overnight 1 hari, RR 1:1.5 risiko rendah.",
+    "entry": [
+        "CLOSE > OPEN",
+        "CLOSE > MA20 * 0.98",
+        "RSI14 >= 42",
+        "RSI14 <= 68",
+        "CLOSE <= SUPPORT * 1.015",
+        "LOW >= SUPPORT * 0.99",
+        "VOLUME >= VMA10",
+        "PRICE_RETURN_1D_PCT > -2"
+    ],
+    "tp": [
+        "CLOSE * 1.03"
+    ],
+    "sl": [
+        "min(SUPPORT * 0.985, CLOSE * 0.98)"
+    ],
+    "max_hold_days": 1
+}
