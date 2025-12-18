@@ -1,18 +1,19 @@
 {
   "name": "TREND_UP_DISCOUNT",
-  "description": "Trend Major Naik (MA50 > MA200), tapi harga sedang koreksi dalam (RSI < 30 + Stoch < 20). Buy the bottom.",
+  "description": "Tangkap pisau jatuh yang aman. Beli saat koreksi ke dekat Support (MA20-ATR), RSI oversold, tapi tren jangka panjang masih UP.",
   "entry": [
-    "MA50 > MA200",
     "CLOSE > MA200",
-    "RSI14 < 30",
-    "STOCH_K < 20",
-    "CLOSE < MA20"
+    "CLOSE < MA20",
+    "RSI14 <= 40",
+    "CLOSE <= SUPPORT * 1.02",
+    "CLOSE >= SUPPORT * 0.98",
+    "STOCH_K < 20"
   ],
   "tp": [
     "MA20"
   ],
   "sl": [
-    "PRICE - (ATR14 * 2)"
+    "SUPPORT * 0.97"
   ],
-  "max_hold_days": 10
+  "max_hold_days": 3
 }

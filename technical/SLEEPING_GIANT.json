@@ -1,0 +1,18 @@
+{
+    "name": "SLEEPING_GIANT",
+    "description": "Tangkap ledakan dari fase konsolidasi. Entry saat harga tembus Upper Bollinger Band dengan Band Width yang mulai melebar.",
+    "entry": [
+        "BB_PERCENT_B > 0.95",
+        "CLOSE > BB_UPPER",
+        "BB_WIDTH > BB_WIDTH * 1.1",
+        "VOLUME > VMA20",
+        "RSI14 > 55"
+    ],
+    "tp": [
+        "CLOSE * 1.06"
+    ],
+    "sl": [
+        "BB_MIDDLE"
+    ],
+    "max_hold_days": 5
+}

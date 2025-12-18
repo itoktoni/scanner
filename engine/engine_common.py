@@ -4,195 +4,175 @@ import numpy as np
 
 def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Tambahkan indikator umum:
-    - OPEN, HIGH, LOW, CLOSE, VOLUME
-    - MA5, MA10, MA20, MA50, MA100, MA200
-    - VMA5, VMA10, VMA20
-    - RSI14
-    - ATR14
-    - HH3, LL3, HH20, LL20
-    - PREVIOUS_PRICE
-    - 1 DAY PRICE RETURN %
-    - 7 DAY PRICE RETURN %
-    - 30 DAY PRICE RETURN %
-    - 50 DAY PRICE RETURN %
-    - 100 DAY PRICE RETURN %
-    - FREQUENCY SPIKE (price INCREASE >= 10%) / 1 day
-    - FIBONACCI RETRACEMENT LEVELS (23.6%, 38.2%, 50%, 61.8%)
-    - MACD (12, 26, 9)
-    - BOLLINGER BANDS (20, 2)
-    - STOCHASTIC OSCILLATOR (14, 3)
-    - VWAP (Volume Weighted Average Price)
-    - VWMA (Volume Weighted Moving Average)
+    Menambahkan indikator teknikal umum ke dalam DataFrame untuk scanning/backtest.
+
+    DAFTAR INDIKATOR (Nama Kolom):
+
+    --- Harga & Volume Dasar ---
+    - OPEN            : Harga pembukaan (Open)
+    - HIGH            : Harga tertinggi (High)
+    - LOW             : Harga terendah (Low)
+    - CLOSE           : Harga penutupan (Close)
+    - PRICE           : Alias untuk CLOSE
+    - VOLUME          : Volume perdagangan
+
+    --- Trend & Volume Average ---
+    - MA5, MA10, MA20, MA50, MA100, MA200 :
+      Simple Moving Average harga Close periode N.
+    - VMA5, VMA10, VMA20 :
+      Simple Moving Average Volume periode N.
+
+    --- Momentum ---
+    - RSI14           : Relative Strength Index (14).
+    - MACD_LINE       : EMA12 - EMA26.
+    - MACD_SIGNAL     : EMA9 dari MACD Line.
+    - MACD_HISTOGRAM  : MACD Line - Signal Line.
+    - STOCH_K         : Stochastic %K (Fast).
+    - STOCH_D         : Stochastic %D (Slow / MA3 dari %K).
+
+    --- Volatilitas & Bands ---
+    - ATR14           : Average True Range (14). Ukuran volatilitas rata-rata.
+    - BB_UPPER        : Bollinger Band Atas (MA20 + 2*StdDev).
+    - BB_LOWER        : Bollinger Band Bawah (MA20 - 2*StdDev).
+    - BB_MIDDLE       : Bollinger Band Tengah (MA20).
+    - BB_WIDTH        : Lebar Band (Upper - Lower).
+    - BB_PERCENT_B    : Posisi harga relatif dlm Band (0=Bawah, 1=Atas).
+
+    --- Support & Resistance Dinamis ---
+    - HH3, LL3        : Highest High / Lowest Low 3 hari terakhir.
+    - HH20, LL20      : Highest High / Lowest Low 20 hari terakhir.
+    - SUPPORT         : Support dinamis (MA20 - 1.5 * ATR14).
+    - RESISTANCE      : Resistance dinamis (MA20 + 1.5 * ATR14).
+
+    --- Return & Statistik ---
+    - PREVIOUS_PRICE        : Harga Close kemarin.
+    - PRICE_RETURN_1D_PCT   : % Return 1 hari.
+    - PRICE_RETURN_7D_PCT   : % Return 7 hari.
+    - SPIKE       : Jumlah hari dgn kenaikan >= 10% dlm 30 hari terakhir.
+
+    --- Advanced ---
+    - VWMA            : Volume Weighted Moving Average (20). Rata-rata harga berbobot volume.
+    - VWAP            : Proxy untuk Daily Chart (di-set sama dengan VWMA).
+    - FIB_236, FIB_382... : Level Retracement Fibonacci dari range High-Low 50 hari terakhir.
     """
+
+    # 1. Copy data agar aman
     df = df.copy()
+    if df.empty:
+        return df
 
-    close = df["Close"]
-    high = df["High"]
-    low = df["Low"]
-    volume = df["Volume"]
-
-    # Harga dasar (UPPER)
-    # OPEN: Harga pembukaan
-    # HIGH: Harga tertinggi
-    # LOW: Harga terendah
-    # CLOSE: Harga penutupan
-    # VOLUME: Volume perdagangan
+    # 2. Mapping Standard Columns (Huruf Besar)
+    # Asumsi input yfinance punya kolom: Open, High, Low, Close, Volume
     df["OPEN"] = df["Open"]
     df["HIGH"] = df["High"]
     df["LOW"] = df["Low"]
     df["CLOSE"] = df["Close"]
-    df["PRICE"] = df["Close"]
+    df["PRICE"] = df["Close"]   # Alias
     df["VOLUME"] = df["Volume"]
 
-    # Previous day's closing price
-    # PREVIOUS_PRICE: Harga penutupan hari sebelumnya
+    # Variabel lokal untuk perhitungan
+    close = df["CLOSE"]
+    high = df["HIGH"]
+    low = df["LOW"]
+    volume = df["VOLUME"]
+
+    # 3. Previous Price & Returns
     df["PREVIOUS_PRICE"] = close.shift(1)
 
-    # Price return percentages for different periods
-    # PRICE_RETURN_1D_PCT: Persentase perubahan harga dalam 1 hari
-    # PRICE_RETURN_7D_PCT: Persentase perubahan harga dalam 7 hari
-    # PRICE_RETURN_30D_PCT: Persentase perubahan harga dalam 30 hari
-    # PRICE_RETURN_50D_PCT: Persentase perubahan harga dalam 50 hari
-    # PRICE_RETURN_100D_PCT: Persentase perubahan harga dalam 100 hari
-    df["PRICE_RETURN_1D_PCT"] = close.pct_change(1) * 100
-    df["PRICE_RETURN_7D_PCT"] = close.pct_change(7) * 100
-    df["PRICE_RETURN_30D_PCT"] = close.pct_change(30) * 100
-    df["PRICE_RETURN_50D_PCT"] = close.pct_change(50) * 100
-    df["PRICE_RETURN_100D_PCT"] = close.pct_change(100) * 100
+    periods = [1, 7, 30, 50, 100]
+    for p in periods:
+        df[f"PRICE_RETURN_{p}D_PCT"] = close.pct_change(p) * 100
 
-    # Frequency spike: Count of times price increased >= 10% in 1 day over a rolling window
-    # First calculate daily percentage change
-    # FREQUENCY_SPIKE: Frekuensi kenaikan harga >= 10% dalam 1 hari selama periode 30 hari
-    daily_pct_change = close.pct_change(1) * 100
-    # Create boolean mask for spikes (>= 10% increase)
-    spike_mask = daily_pct_change >= 10
-    # Count frequency of spikes over a 30-day rolling window (can be adjusted)
-    df["FREQUENCY_SPIKE"] = spike_mask.rolling(30).sum()
+    # 4. Frequency Spike (Karakter Saham)
+    # Hitung berapa kali naik >= 10% dalam 30 hari terakhir
+    daily_pct = df["PRICE_RETURN_1D_PCT"]
+    spike_mask = daily_pct >= 1
+    df["SPIKE"] = spike_mask.rolling(30).sum()
 
-    # Fibonacci Retracement Levels (calculated over last 50 days)
-    # Level-level retracement Fibonacci berdasarkan harga tertinggi dan terendah 50 hari terakhir
-    # FIB_236: Level retracement 23.6%
-    # FIB_382: Level retracement 38.2%
-    # FIB_50: Level retracement 50%
-    # FIB_618: Level retracement 61.8%
-    # Calculate highest high and lowest low over the past 50 days
-    highest_high = high.rolling(50).max()
-    lowest_low = low.rolling(50).min()
-    price_range = highest_high - lowest_low
+    # 5. Moving Averages (Price & Volume)
+    ma_windows = [5, 10, 20, 50, 100, 200]
+    for w in ma_windows:
+        df[f"MA{w}"] = close.rolling(w).mean()
 
-    # Fibonacci levels
-    df["FIB_236"] = highest_high - (price_range * 0.236)
-    df["FIB_382"] = highest_high - (price_range * 0.382)
-    df["FIB_50"] = highest_high - (price_range * 0.5)
-    df["FIB_618"] = highest_high - (price_range * 0.618)
+    vma_windows = [5, 10, 20]
+    for w in vma_windows:
+        df[f"VMA{w}"] = volume.rolling(w).mean()
 
-    # MACD (12, 26, 9)
-    # Indikator yang menunjukkan momentum dengan menghitung selisih antara dua EMA
-    # MACD_LINE: Garis MACD (selisih EMA 12 dan EMA 26)
-    # MACD_SIGNAL: Garis sinyal (EMA 9 dari garis MACD)
-    # MACD_HISTOGRAM: Histogram (selisih antara garis MACD dan garis sinyal)
-    ema_12 = close.ewm(span=12).mean()
-    ema_26 = close.ewm(span=26).mean()
-    df["MACD_LINE"] = ema_12 - ema_26
-    df["MACD_SIGNAL"] = df["MACD_LINE"].ewm(span=9).mean()
-    df["MACD_HISTOGRAM"] = df["MACD_LINE"] - df["MACD_SIGNAL"]
-
-    # Bollinger Bands (20, 2)
-    # Menunjukkan volatilitas harga dengan pita atas dan bawah
-    # BB_MIDDLE: Garis tengah (SMA 20)
-    # BB_UPPER: Pita atas (SMA 20 + 2 * deviasi standar)
-    # BB_LOWER: Pita bawah (SMA 20 - 2 * deviasi standar)
-    # BB_WIDTH: Lebar pita Bollinger
-    # BB_PERCENT_B: Posisi harga dalam pita Bollinger (%B)
-    df["BB_MIDDLE"] = close.rolling(20).mean()
-    bb_std = close.rolling(20).std()
-    df["BB_UPPER"] = df["BB_MIDDLE"] + (bb_std * 2)
-    df["BB_LOWER"] = df["BB_MIDDLE"] - (bb_std * 2)
-    # Bollinger Band Width
-    df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
-    # Bollinger Band %B
-    df["BB_PERCENT_B"] = (close - df["BB_LOWER"]) / (df["BB_UPPER"] - df["BB_LOWER"])
-
-    # Stochastic Oscillator (14, 3)
-    # Indikator momentum yang membandingkan harga penutupan dengan range harga
-    # STOCH_K: Garis %K (stochastic cepat)
-    # STOCH_D: Garis %D (moving average 3 periode dari %K / stochastic lambat)
-    low_14 = low.rolling(14).min()
-    high_14 = high.rolling(14).max()
-    # Fast Stochastic
-    df["STOCH_K"] = 100 * ((close - low_14) / (high_14 - low_14))
-    # Slow Stochastic (3-period moving average of %K)
-    df["STOCH_D"] = df["STOCH_K"].rolling(3).mean()
-
-    # MA Harga
-    # Moving averages untuk berbagai periode waktu
-    # Digunakan untuk mengidentifikasi tren dan area support/resistance
-    for win in [5, 10, 20, 50, 100, 200]:
-        df[f"MA{win}"] = close.rolling(win).mean()
-
-    # Volume MA
-    # Moving average volume untuk mengidentifikasi aktivitas perdagangan
-    for win in [5, 10, 20]:
-        df[f"VMA{win}"] = volume.rolling(win).mean()
-
-    # RSI 14
-    # Relative Strength Index: Mengukur kekuatan tren dan kondisi overbought/oversold
-    # Nilai 0-30: Oversold, 30-70: Netral, 70-100: Overbought
-    delta = close.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    roll_up = gain.rolling(window=14).mean()
-    roll_down = loss.rolling(window=14).mean()
-    rs = roll_up / roll_down
-    df["RSI14"] = 100 - (100 / (1 + rs))
-
+    # 6. Volatility (ATR & Bollinger Bands)
     # ATR 14
-    # Average True Range: Mengukur volatilitas pasar
-    # Semakin tinggi nilai ATR, semakin besar volatilitas
     tr1 = (high - low).abs()
     tr2 = (high - close.shift(1)).abs()
     tr3 = (low - close.shift(1)).abs()
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     df["ATR14"] = tr.rolling(14).mean()
 
-    # High/Low rolling
-    # HH3: Harga tertinggi dalam 3 hari terakhir
-    # LL3: Harga terendah dalam 3 hari terakhir
-    # HH20: Harga tertinggi dalam 20 hari terakhir
-    # LL20: Harga terendah dalam 20 hari terakhir
-    df["HH3"] = high.rolling(3).max()
-    df["LL3"] = low.rolling(3).min()
-    df["HH20"] = high.rolling(20).max()
-    df["LL20"] = low.rolling(20).min()
+    # Bollinger Bands (20, 2)
+    bb_mid = close.rolling(20).mean()
+    bb_std = close.rolling(20).std()
+    df["BB_MIDDLE"] = bb_mid
+    df["BB_UPPER"] = bb_mid + (bb_std * 2)
+    df["BB_LOWER"] = bb_mid - (bb_std * 2)
+    df["BB_WIDTH"] = df["BB_UPPER"] - df["BB_LOWER"]
+    # Handle division by zero
+    df["BB_PERCENT_B"] = (close - df["BB_LOWER"]) / df["BB_WIDTH"].replace(0, np.nan)
 
-    # Support / Resistance yang lebih akurat (berbasis pengulangan harga terbanyak)
-    # SUPPORT1: Level support berdasarkan harga terendah yang paling sering muncul dalam 20 hari
-    # RESIST1: Level resistance berdasarkan harga tertinggi yang paling sering muncul dalam 20 hari
-    # Metode ini mencari harga pembulatan atau level psikologis penting
+    # 7. Momentum (RSI, MACD, Stochastic)
+    # RSI 14
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    df["RSI14"] = 100 - (100 / (1 + rs))
 
-    # Untuk support: cari harga terendah yang sering terjadi (cluster rendah)
-    # Untuk resistance: cari harga tertinggi yang sering terjadi (cluster tinggi)
+    # MACD (12, 26, 9)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    df["MACD_LINE"] = ema12 - ema26
+    df["MACD_SIGNAL"] = df["MACD_LINE"].ewm(span=9, adjust=False).mean()
+    df["MACD_HISTOGRAM"] = df["MACD_LINE"] - df["MACD_SIGNAL"]
 
-    # Pendekatan sederhana: gunakan moving average sebagai pendekatan support/resistance dinamis
-    df["SUPPORT"] = df["MA20"] - (df["ATR14"] * 1.5)  # Support dinamis berdasarkan MA20 dan ATR
-    df["RESISTANCE"] = df["MA20"] + (df["ATR14"] * 1.5)   # Resistance dinamis berdasarkan MA20 dan ATR
+    # Stochastic (14, 3)
+    low14 = low.rolling(14).min()
+    high14 = high.rolling(14).max()
+    stoch_k = 100 * ((close - low14) / (high14 - low14).replace(0, np.nan))
+    df["STOCH_K"] = stoch_k
+    df["STOCH_D"] = stoch_k.rolling(3).mean()
 
-    # VWAP (Volume Weighted Average Price)
-    # Menghitung typical price sebagai rata-rata dari high, low, dan close
-    typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
-    # Menghitung cumulative sum dari (typical price * volume) dan cumulative sum dari volume
-    cum_price_volume = (typical_price * df["Volume"]).cumsum()
-    cum_volume = df["Volume"].cumsum()
-    # VWAP adalah cumulative sum dari (price * volume) dibagi cumulative sum dari volume
-    df["VWAP"] = cum_price_volume / cum_volume
+    # 8. Support / Resistance & High/Low Rolling
+    for w in [3, 20]:
+        df[f"HH{w}"] = high.rolling(w).max()
+        df[f"LL{w}"] = low.rolling(w).min()
 
-    # VWMA (Volume Weighted Moving Average)
-    # Menghitung VWMA menggunakan rolling window dari typical price dan volume
-    # Menggunakan window 20 hari sebagai default
-    window = 20
-    price_volume_sum = (typical_price * df["Volume"]).rolling(window=window).sum()
-    volume_sum = df["Volume"].rolling(window=window).sum()
-    df["VWMA"] = price_volume_sum / volume_sum
+    # Fibonacci Retracement (50 Days Range)
+    hh50 = high.rolling(50).max()
+    ll50 = low.rolling(50).min()
+    range50 = hh50 - ll50
+    df["FIB_236"] = hh50 - (range50 * 0.236)
+    df["FIB_382"] = hh50 - (range50 * 0.382)
+    df["FIB_50"]  = hh50 - (range50 * 0.5)
+    df["FIB_618"] = hh50 - (range50 * 0.618)
+
+    # Dynamic Support/Resistance (ATR Based)
+    # Support lantai yang naik turun ikut volatilitas
+    df["SUPPORT"] = df["MA20"] - (df["ATR14"] * 1.5)
+    df["RESISTANCE"] = df["MA20"] + (df["ATR14"] * 1.5)
+
+    # 9. VWAP / VWMA
+    # Typical Price
+    tp = (high + low + close) / 3
+    # VWMA (Rolling 20) -> Valid untuk chart Daily
+    vp_sum = (tp * volume).rolling(20).sum()
+    v_sum = volume.rolling(20).sum()
+    df["VWMA"] = vp_sum / v_sum.replace(0, np.nan)
+
+    # VWAP Proxy (disamakan dengan VWMA agar tidak misleading di chart daily)
+    df["VWAP"] = df["VWMA"]
+
+    # 10. Final Cleanup (Isi NaN dengan 0 agar engine eval aman)
+    # Fill Forward dulu (untuk data yg bolong dikit), lalu Fill 0 (untuk awal data)
+    df.ffill(inplace=True)
+    df.fillna(0, inplace=True)
 
     return df

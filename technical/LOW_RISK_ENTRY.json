@@ -1,0 +1,19 @@
+{
+  "name": "LOW_RISK_ENTRY",
+  "description": "Entry presisi di area Support Kuat (LL20). Toleransi jarak hanya +/- 1%. Risk sangat kecil (max 1.5%), Reward 3%. Cocok untuk market sideways.",
+  "entry": [
+    "CLOSE >= LL20 * 0.99",
+    "CLOSE <= LL20 * 1.01",
+    "RSI14 < 45",
+    "STOCH_K < 20",
+    "VOLUME < VMA20",
+    "CLOSE > OPEN"
+  ],
+  "tp": [
+    "CLOSE * 1.03"
+  ],
+  "sl": [
+    "CLOSE * 0.985"
+  ],
+  "max_hold_days": 3
+}
