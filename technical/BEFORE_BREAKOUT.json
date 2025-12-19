@@ -8,13 +8,13 @@
         "MA50 > MA200",
         "RSI14 >= 50",
         "RSI14 <= 70",
-        "SPIKE > 1",
+        "SPIKE > 0",
         "VOLUME >= VMA20",
         "VOLUME <= VMA20 * 1.5",
         "CLOSE <= VWAP * 1.05"
     ],
     "tp": [
-        "CLOSE * (ATR14 * 2)"
+        "CLOSE + (ATR14 * 2)"
     ],
     "sl": [
         "CLOSE - (ATR14 * 1.5)"
