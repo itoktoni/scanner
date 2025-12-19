@@ -58,11 +58,11 @@
                 <label class="form-label">Tickers (multiple, boleh kosong)</label>
                 <select name="tickers" id="tickers-select" class="form-select" multiple>
                   {% for item in all_tickers %}
-                  <option value="{{ item.symbol }}">{{ item.symbol }}</option>
+                  <option value="{{ item.symbol }}">{{ item.symbol }}{% if syariah_tickers and item.symbol not in syariah_tickers %}*{% endif %}</option>
                   {% endfor %}
                 </select>
                 <small class="text-muted">
-                  Jika tidak memilih apa pun, sistem akan memakai semua emiten di list ini.
+                  *) Non-Syariah. Jika tidak memilih apa pun, sistem akan memakai semua emiten di list ini.
                 </small>
               </div>
 
@@ -145,7 +145,8 @@
             </div>
             <small class="text-muted">
               • Mode Scan: 1 baris per ticker (kondisi sekarang; hanya jika memenuhi strategy).<br>
-              • Mode Backtest: 1 baris per trade (historis, termasuk SL/TP saat entry).
+              • Mode Backtest: 1 baris per trade (historis, termasuk SL/TP saat entry).<br>
+              • *) Menandakan saham non-syariah.
             </small>
           </div>
         </div>

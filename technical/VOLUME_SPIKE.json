@@ -7,7 +7,7 @@
     "PRICE_RETURN_1D_PCT > 4",
     "CLOSE > HH20",
     "RSI14 > 60",
-    "FREQUENCY_SPIKE > 0"
+    "SPIKE > 0"
   ],
   "tp": [
     "CLOSE * 1.08"
