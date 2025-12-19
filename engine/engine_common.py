@@ -54,6 +54,14 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     - VWMA            : Volume Weighted Moving Average (20). Rata-rata harga berbobot volume.
     - VWAP            : Proxy untuk Daily Chart (di-set sama dengan VWMA).
     - FIB_236, FIB_382... : Level Retracement Fibonacci dari range High-Low 50 hari terakhir.
+    - THREE_RED_CANDLES : Numeric indicator (1/0) untuk 3 candle merah berturut-turut (bearish pattern). 1 = pola ditemukan, 0 = tidak ditemukan.
+    - THREE_GREEN_CANDLES : Numeric indicator (1/0) untuk 3 candle hijau berturut-turut (bullish pattern). 1 = pola ditemukan, 0 = tidak ditemukan.
+    - DOJI : Numeric indicator (1/0) untuk pola Doji (open ≈ close). 1 = pola ditemukan, 0 = tidak ditemukan.
+    - HAMMER : Numeric indicator (1/0) untuk pola Hammer (bullish reversal). 1 = pola ditemukan, 0 = tidak ditemukan.
+    - HANGING_MAN : Numeric indicator (1/0) untuk pola Hanging Man (bearish reversal). 1 = pola ditemukan, 0 = tidak ditemukan.
+    - SHOOTING_STAR : Numeric indicator (1/0) untuk pola Shooting Star (bearish reversal). 1 = pola ditemukan, 0 = tidak ditemukan.
+    - MORNING_STAR : Numeric indicator (1/0) untuk pola Morning Star (bullish reversal). 1 = pola ditemukan, 0 = tidak ditemukan.
+    - EVENING_STAR : Numeric indicator (1/0) untuk pola Evening Star (bearish reversal). 1 = pola ditemukan, 0 = tidak ditemukan.
     """
 
     # 1. Copy data agar aman
@@ -170,7 +178,90 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # VWAP Proxy (disamakan dengan VWMA agar tidak misleading di chart daily)
     df["VWAP"] = df["VWMA"]
 
-    # 10. Final Cleanup (Isi NaN dengan 0 agar engine eval aman)
+    # 10. Candlestick Patterns
+    
+    # Three Red Candles Pattern (Bearish)
+    # Membuat numeric indicator untuk 3 candle merah berturut-turut (1 = pattern ditemukan, 0 = tidak ditemukan)
+    # Candle merah = Close < Open
+    is_red_candle = df["CLOSE"] < df["OPEN"]
+    # Memeriksa apakah 3 candle berturut-turut merah
+    three_red_condition = is_red_candle & is_red_candle.shift(1) & is_red_candle.shift(2)
+    # Konversi boolean ke integer (1 untuk True, 0 untuk False)
+    df["THREE_RED_CANDLES"] = three_red_condition.astype(int)
+    
+    # Three Green Candles Pattern (Bullish)
+    # Candle hijau = Close > Open
+    is_green_candle = df["CLOSE"] > df["OPEN"]
+    # Memeriksa apakah 3 candle berturut-turut hijau
+    three_green_condition = is_green_candle & is_green_candle.shift(1) & is_green_candle.shift(2)
+    # Konversi boolean ke integer (1 untuk True, 0 untuk False)
+    df["THREE_GREEN_CANDLES"] = three_green_condition.astype(int)
+    
+    # Doji Pattern
+    # Doji terjadi ketika Open ≈ Close (selisih kecil)
+    body_size = (df["CLOSE"] - df["OPEN"]).abs()
+    average_body = body_size.rolling(10).mean()  # Rata-rata body size 10 hari terakhir
+    # Doji jika body size < 10% dari rata-rata body size
+    doji_condition = body_size < (average_body * 0.1)
+    df["DOJI"] = doji_condition.astype(int)
+    
+    # Hammer Pattern (Bullish Reversal)
+    # Hammer: panjang lower shadow jauh lebih besar dari body, upper shadow sangat kecil/tdk ada
+    # Body kecil di bagian atas
+    body_size = (df["CLOSE"] - df["OPEN"]).abs()
+    upper_shadow = df["HIGH"] - df[["CLOSE", "OPEN"]].max(axis=1)
+    lower_shadow = df[["CLOSE", "OPEN"]].min(axis=1) - df["LOW"]
+    
+    # Hammer conditions:
+    # 1. Lower shadow >= 2x body size
+    # 2. Upper shadow <= 0.5x body size
+    # 3. Body kecil (< 20% dari range total)
+    total_range = df["HIGH"] - df["LOW"]
+    hammer_condition = (
+        (lower_shadow >= body_size * 2) &
+        (upper_shadow <= body_size * 0.5) &
+        (body_size < total_range * 0.2)
+    )
+    df["HAMMER"] = hammer_condition.astype(int)
+    
+    # Hanging Man Pattern (Bearish Reversal)
+    # Sama seperti hammer tapi terjadi di uptrend (kita bisa cek dengan MA200)
+    # Untuk kesederhanaan, kita gunakan logika yang sama dengan hammer
+    df["HANGING_MAN"] = hammer_condition.astype(int)
+    
+    # Shooting Star Pattern (Bearish Reversal)
+    # Kebalikan dari hammer: body kecil di bagian bawah
+    # Upper shadow >= 2x body size
+    # Lower shadow <= 0.5x body size
+    shooting_star_condition = (
+        (upper_shadow >= body_size * 2) &
+        (lower_shadow <= body_size * 0.5) &
+        (body_size < total_range * 0.2)
+    )
+    df["SHOOTING_STAR"] = shooting_star_condition.astype(int)
+    
+    # Morning Star Pattern (Bullish Reversal - 3 candles)
+    # 1. Large red candle
+    # 2. Small body (gap down from 1st candle)
+    # 3. Large green candle (gap up from 2nd candle)
+    first_candle_red = df["CLOSE"].shift(2) < df["OPEN"].shift(2)
+    second_candle_small = body_size.shift(1) < (body_size.rolling(10).mean().shift(1) * 0.3)
+    third_candle_green = df["CLOSE"] > df["OPEN"]
+    
+    morning_star_condition = first_candle_red & second_candle_small & third_candle_green
+    df["MORNING_STAR"] = morning_star_condition.astype(int)
+    
+    # Evening Star Pattern (Bearish Reversal - 3 candles)
+    # 1. Large green candle
+    # 2. Small body (gap up from 1st candle)
+    # 3. Large red candle (gap down from 2nd candle)
+    first_candle_green = df["CLOSE"].shift(2) > df["OPEN"].shift(2)
+    evening_star_condition = first_candle_green & second_candle_small & third_candle_green
+    # Kebalikan dari morning star (third candle red)
+    evening_star_condition_corrected = first_candle_green & second_candle_small & (df["CLOSE"] < df["OPEN"])
+    df["EVENING_STAR"] = evening_star_condition_corrected.astype(int)
+
+    # 11. Final Cleanup (Isi NaN dengan 0 agar engine eval aman)
     # Fill Forward dulu (untuk data yg bolong dikit), lalu Fill 0 (untuk awal data)
     df.ffill(inplace=True)
     df.fillna(0, inplace=True)
