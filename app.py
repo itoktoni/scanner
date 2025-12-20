@@ -96,7 +96,7 @@ def index():
         last_price = float(df["Close"].iloc[-1])
 
         # SCAN: kondisi sekarang per ticker
-        entry_info = get_entry_sl_tp_row(df, config)
+        entry_info = get_entry_sl_tp_row(df, config, t)  # Pass ticker info
         if entry_info:
             entry_price = entry_info["entry_price"]
             sl = entry_info["stop_loss"]
@@ -144,6 +144,7 @@ def index():
                 config=config,
                 start_date=start,
                 end_date=today,
+                ticker=t  # Pass ticker info
             )
 
             for tr in trades:

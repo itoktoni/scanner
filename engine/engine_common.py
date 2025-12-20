@@ -17,10 +17,15 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     - VOLUME          : Volume perdagangan
 
     --- Trend & Volume Average ---
-    - MA5, MA10, MA20, MA50, MA100, MA200 :
-      Simple Moving Average harga Close periode N.
-    - VMA5, VMA10, VMA20 :
-      Simple Moving Average Volume periode N.
+    - MA5             : Simple Moving Average harga Close periode 5.
+    - MA10            : Simple Moving Average harga Close periode 10.
+    - MA20            : Simple Moving Average harga Close periode 20.
+    - MA50            : Simple Moving Average harga Close periode 50.
+    - MA100           : Simple Moving Average harga Close periode 100.
+    - MA200           : Simple Moving Average harga Close periode 200.
+    - VMA5            : Simple Moving Average Volume periode 5.
+    - VMA10           : Simple Moving Average Volume periode 10.
+    - VMA20           : Simple Moving Average Volume periode 20.
 
     --- Momentum ---
     - RSI14           : Relative Strength Index (14).
@@ -39,8 +44,10 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     - BB_PERCENT_B    : Posisi harga relatif dlm Band (0=Bawah, 1=Atas).
 
     --- Support & Resistance Dinamis ---
-    - HH3, LL3        : Highest High / Lowest Low 3 hari terakhir.
-    - HH20, LL20      : Highest High / Lowest Low 20 hari terakhir.
+    - HH3             : Highest High 3 hari terakhir.
+    - LL3             : Lowest Low 3 hari terakhir.
+    - HH20            : Highest High 20 hari terakhir.
+    - LL20            : Lowest Low 20 hari terakhir.
     - SUPPORT         : Support dinamis (MA20 - 1.5 * ATR14).
     - RESISTANCE      : Resistance dinamis (MA20 + 1.5 * ATR14).
 
@@ -48,12 +55,23 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     - PREVIOUS_PRICE        : Harga Close kemarin.
     - PRICE_RETURN_1D_PCT   : % Return 1 hari.
     - PRICE_RETURN_7D_PCT   : % Return 7 hari.
+    - PRICE_RETURN_30D_PCT  : % Return 30 hari.
+    - PRICE_RETURN_50D_PCT  : % Return 50 hari.
+    - PRICE_RETURN_100D_PCT : % Return 100 hari.
     - SPIKE       : Jumlah hari dgn kenaikan >= 10% dlm 30 hari terakhir.
+
+    --- Frekuensi Perdagangan ---
+    - TRADE_FREQUENCY  : Frekuensi perdagangan berdasarkan volume relatif thd rata-rata.
+                         Nilai > 100 berarti volume lebih tinggi dari rata-rata.
+    - HIGH_VOL_DAYS    : Jumlah hari dengan volume tinggi (>150% rata-rata) dalam 30 hari terakhir.
 
     --- Advanced ---
     - VWMA            : Volume Weighted Moving Average (20). Rata-rata harga berbobot volume.
     - VWAP            : Proxy untuk Daily Chart (di-set sama dengan VWMA).
-    - FIB_236, FIB_382... : Level Retracement Fibonacci dari range High-Low 50 hari terakhir.
+    - FIB_236         : Level Retracement Fibonacci 23.6% dari range High-Low 50 hari terakhir.
+    - FIB_382         : Level Retracement Fibonacci 38.2% dari range High-Low 50 hari terakhir.
+    - FIB_50          : Level Retracement Fibonacci 50.0% dari range High-Low 50 hari terakhir.
+    - FIB_618         : Level Retracement Fibonacci 61.8% dari range High-Low 50 hari terakhir.
     """
 
     # 1. Copy data agar aman
@@ -61,7 +79,15 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # 2. Mapping Standard Columns (Huruf Besar)
+    # 2. Handle MultiIndex columns if present (from yfinance)
+    if isinstance(df.columns, pd.MultiIndex):
+        # Extract single-level columns for price data
+        df_single = pd.DataFrame()
+        for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
+            df_single[col] = df[col].iloc[:, 0] if isinstance(df[col], pd.DataFrame) else df[col]
+        df = df_single
+
+    # 3. Mapping Standard Columns (Huruf Besar)
     # Asumsi input yfinance punya kolom: Open, High, Low, Close, Volume
     df["OPEN"] = df["Open"]
     df["HIGH"] = df["High"]
@@ -76,20 +102,20 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     low = df["LOW"]
     volume = df["VOLUME"]
 
-    # 3. Previous Price & Returns
+    # 4. Previous Price & Returns
     df["PREVIOUS_PRICE"] = close.shift(1)
 
     periods = [1, 7, 30, 50, 100]
     for p in periods:
         df[f"PRICE_RETURN_{p}D_PCT"] = close.pct_change(p) * 100
 
-    # 4. Frequency Spike (Karakter Saham)
+    # 5. Frequency Spike (Karakter Saham)
     # Hitung berapa kali naik >= 10% dalam 30 hari terakhir
     daily_pct = df["PRICE_RETURN_1D_PCT"]
     spike_mask = daily_pct >= 1
     df["SPIKE"] = spike_mask.rolling(30).sum()
 
-    # 5. Moving Averages (Price & Volume)
+    # 6. Moving Averages (Price & Volume)
     ma_windows = [5, 10, 20, 50, 100, 200]
     for w in ma_windows:
         df[f"MA{w}"] = close.rolling(w).mean()
@@ -98,7 +124,7 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     for w in vma_windows:
         df[f"VMA{w}"] = volume.rolling(w).mean()
 
-    # 6. Volatility (ATR & Bollinger Bands)
+    # 7. Volatility (ATR & Bollinger Bands)
     # ATR 14
     tr1 = (high - low).abs()
     tr2 = (high - close.shift(1)).abs()
@@ -116,7 +142,7 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # Handle division by zero
     df["BB_PERCENT_B"] = (close - df["BB_LOWER"]) / df["BB_WIDTH"].replace(0, np.nan)
 
-    # 7. Momentum (RSI, MACD, Stochastic)
+    # 8. Momentum (RSI, MACD, Stochastic)
     # RSI 14
     delta = close.diff()
     gain = delta.clip(lower=0)
@@ -140,7 +166,7 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["STOCH_K"] = stoch_k
     df["STOCH_D"] = stoch_k.rolling(3).mean()
 
-    # 8. Support / Resistance & High/Low Rolling
+    # 9. Support / Resistance & High/Low Rolling
     for w in [3, 20]:
         df[f"HH{w}"] = high.rolling(w).max()
         df[f"LL{w}"] = low.rolling(w).min()
@@ -159,7 +185,7 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["SUPPORT"] = df["MA20"] - (df["ATR14"] * 1.5)
     df["RESISTANCE"] = df["MA20"] + (df["ATR14"] * 1.5)
 
-    # 9. VWAP / VWMA
+    # 10. VWAP / VWMA
     # Typical Price
     tp = (high + low + close) / 3
     # VWMA (Rolling 20) -> Valid untuk chart Daily
@@ -170,9 +196,157 @@ def add_common_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # VWAP Proxy (disamakan dengan VWMA agar tidak misleading di chart daily)
     df["VWAP"] = df["VWMA"]
 
-    # 10. Final Cleanup (Isi NaN dengan 0 agar engine eval aman)
+    # 11. Frekuensi Perdagangan (Trading Frequency)
+    # Mengukur seberapa sering saham diperdagangkan berdasarkan volume
+    avg_volume = volume.rolling(20).mean()
+    # TRADE_FREQUENCY: Rasio volume saat ini terhadap rata-rata volume (dalam %)
+    df["TRADE_FREQUENCY"] = (volume / avg_volume.replace(0, np.nan)) * 100
+    # HIGH_VOL_DAYS: Hari dengan volume tinggi (>150% dari rata-rata 20 hari)
+    high_vol_mask = volume > (avg_volume * 1.5)
+    df["HIGH_VOL_DAYS"] = high_vol_mask.rolling(30).sum()
+
+    # 12. Final Cleanup (Isi NaN dengan 0 agar engine eval aman)
     # Fill Forward dulu (untuk data yg bolong dikit), lalu Fill 0 (untuk awal data)
     df.ffill(inplace=True)
+    df.fillna(0, inplace=True)
+
+    return df
+
+
+def add_fundamental_indicators(df: pd.DataFrame, ticker_info: dict) -> pd.DataFrame:
+    """
+    Menambahkan indikator fundamental ke dalam DataFrame untuk scanning/backtest.
+
+    Parameter:
+    - df: DataFrame harga historis
+    - ticker_info: Dictionary informasi fundamental dari yfinance
+
+    DAFTAR INDIKATOR FUNDAMENTAL (Nama Kolom):
+
+    --- Valuasi (Valuation) ---
+    - TRAILING_PE      : Price to Earnings Ratio (TTM). Semakin kecil, semakin "murah".
+    - FORWARD_PE       : Forward P/E. Estimasi P/E berdasarkan proyeksi laba analis.
+    - PEG_RATIO        : Price/Earnings to Growth. Dibawah 1.0 biasanya undervalued.
+    - PRICE_TO_BOOK    : PBV (Price to Book Value). < 1.0 biasanya "salah harga".
+    - PRICE_TO_SALES   : Price to Sales (P/S). Untuk perusahaan belum untung tapi omzet besar.
+    - PRICE_TO_CF      : Price to Cash Flow Ratio (P/CF). Rasio harga saham terhadap arus kas per lembar.
+
+    --- Profitabilitas (Profitability) ---
+    - RETURN_ON_EQUITY : ROE. Efisiensi manajemen mengelola uang investor (%).
+    - RETURN_ON_ASSETS : ROA. Efisiensi penggunaan aset perusahaan (%).
+    - PROFIT_MARGINS   : Net Profit Margin (NPM). Laba bersih dari total pendapatan (%).
+    - GROSS_MARGINS    : Gross Profit Margin (GPM). Laba kotor dari total pendapatan (%).
+    - OPERATING_MARGINS: Operating Margin (OPM). Laba operasional dari total pendapatan (%).
+
+    --- Kesehatan Keuangan (Financial Health) ---
+    - DEBT_TO_EQUITY   : DER. Rasio total hutang terhadap total modal (>1.0 berarti hutang > modal sendiri).
+    - CURRENT_RATIO    : Aset Lancar/Hutang Lancar. Kemampuan bayar hutang jangka pendek (>1.0 aman).
+    - QUICK_RATIO      : Acid Test Ratio. Seperti Current Ratio tapi tanpa inventory (lebih ketat).
+    - TOTAL_CASH_PS    : Jumlah uang tunai per lembar saham.
+
+    --- Dividen (Dividends) ---
+    - DIVIDEND_YIELD   : Imbal hasil dividen tahunan terhadap harga saham (%).
+    - PAYOUT_RATIO     : Persentase laba bersih yang dibagikan sebagai dividen (%).
+    - DIVIDEND_RATE    : Estimasi nominal dividen (dalam Rupiah) per tahun.
+
+    --- Pertumbuhan & Efisiensi (Growth & Efficiency) ---
+    - REVENUE_GROWTH   : Pertumbuhan pendapatan (omzet) YoY (%).
+    - EARNINGS_GROWTH  : Pertumbuhan laba bersih YoY (%).
+    - REVENUE_PS       : Pendapatan per lembar saham.
+
+    --- Arus Kas (Cash Flow) ---
+    - OPERATING_CF     : Arus kas bersih dari operasi bisnis inti.
+    - FREE_CASHFLOW    : Free Cash Flow (FCF). Sisa uang tunai setelah Capex.
+    """
+
+    # Copy data agar aman
+    df = df.copy()
+    if df.empty:
+        return df
+
+    # Mapping fundamental indicators dari yfinance info
+    fundamentals_map = {
+        # Valuasi
+        'TRAILING_PE': 'trailingPE',
+        'FORWARD_PE': 'forwardPE',
+        'PEG_RATIO': 'trailingPegRatio',  # Using trailingPegRatio as proxy for pegRatio
+        'PRICE_TO_BOOK': 'priceToBook',
+        'PRICE_TO_SALES': 'priceToSalesTrailing12Months',
+        # Note: EV_TO_EBITDA not directly available from yfinance
+
+        # Profitabilitas
+        'RETURN_ON_EQUITY': 'returnOnEquity',
+        'RETURN_ON_ASSETS': 'returnOnAssets',
+        'PROFIT_MARGINS': 'profitMargins',
+        'GROSS_MARGINS': 'grossMargins',
+        'OPERATING_MARGINS': 'operatingMargins',
+
+        # Kesehatan Keuangan
+        'CURRENT_RATIO': 'currentRatio',
+        'QUICK_RATIO': 'quickRatio',  # Not directly available from yfinance
+        'TOTAL_CASH_PS': 'totalCashPerShare',
+
+        # Dividen
+        'DIVIDEND_YIELD': 'dividendYield',  # Usually expressed as decimal, convert to percentage
+        'PAYOUT_RATIO': 'payoutRatio',
+        'DIVIDEND_RATE': 'dividendRate',
+
+        # Pertumbuhan
+        'REVENUE_GROWTH': 'revenueGrowth',
+        'EARNINGS_GROWTH': 'earningsGrowth',
+        'REVENUE_PS': 'revenuePerShare',
+
+        # Arus Kas
+        'OPERATING_CF': 'operatingCashflow',
+        'FREE_CASHFLOW': 'freeCashflow'
+    }
+
+    # Add fundamental indicators to DataFrame
+    for indicator_col, info_key in fundamentals_map.items():
+        if info_key in ticker_info and ticker_info[info_key] is not None:
+            # Special handling for dividend yield (usually comes as decimal, convert to percentage)
+            if info_key == 'dividendYield':
+                df[indicator_col] = ticker_info[info_key] * 100
+            else:
+                df[indicator_col] = ticker_info[info_key]
+        else:
+            # Set default value if not available
+            df[indicator_col] = 0.0
+
+    # Calculate derived fundamentals if raw data is available
+    # Debt to Equity Ratio = Total Debt / Total Equity
+    if 'totalDebt' in ticker_info and 'totalStockholderEquity' in ticker_info:
+        total_debt = ticker_info.get('totalDebt', 0)
+        total_equity = ticker_info.get('totalStockholderEquity', 1)  # Avoid division by zero
+        if total_equity != 0:
+            df['DEBT_TO_EQUITY'] = total_debt / total_equity
+        else:
+            df['DEBT_TO_EQUITY'] = 0.0
+    elif 'debtToEquity' in ticker_info:
+        # Use directly provided debtToEquity if available
+        df['DEBT_TO_EQUITY'] = ticker_info.get('debtToEquity', 0.0)
+    else:
+        df['DEBT_TO_EQUITY'] = 0.0
+
+    # Price to Cash Flow Ratio (P/CF) = Market Price per Share / Cash Flow per Share
+    # We'll approximate this using operating cash flow and shares outstanding
+    if 'operatingCashflow' in ticker_info and 'sharesOutstanding' in ticker_info and len(df) > 0:
+        operating_cf = ticker_info.get('operatingCashflow', 0)
+        shares_outstanding = ticker_info.get('sharesOutstanding', 1)
+        current_price = df['CLOSE'].iloc[-1] if len(df) > 0 else 0
+
+        if shares_outstanding != 0:
+            cf_per_share = operating_cf / shares_outstanding
+            if cf_per_share != 0:
+                df['PRICE_TO_CF'] = current_price / cf_per_share
+            else:
+                df['PRICE_TO_CF'] = 0.0
+        else:
+            df['PRICE_TO_CF'] = 0.0
+    else:
+        df['PRICE_TO_CF'] = 0.0
+
+    # Final Cleanup (Fill NaN with 0)
     df.fillna(0, inplace=True)
 
     return df

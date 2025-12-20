@@ -1,0 +1,19 @@
+{
+    "name": "CASH_FLOW_VALUE",
+    "description": "Strategi value investing berdasarkan rasio Price to Cash Flow yang rendah, menunjukkan saham yang mungkin undervalued berdasarkan arus kas.",
+    "entry": [
+        "PRICE_TO_CF <= 10",
+        "PRICE_TO_CF > 0",
+        "FREE_CASHFLOW > 0",
+        "RETURN_ON_EQUITY >= 10",
+        "DEBT_TO_EQUITY <= 1.0",
+        "CURRENT_RATIO >= 1.5"
+    ],
+    "tp": [
+        "CLOSE * 1.25"
+    ],
+    "sl": [
+        "CLOSE * 0.9"
+    ],
+    "max_hold_days": 20
+}

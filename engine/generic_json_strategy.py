@@ -3,11 +3,14 @@ import os
 import json
 import pandas as pd
 import numpy as np
+import yfinance as yf
 
-from .engine_common import add_common_indicators
+from .engine_common import add_common_indicators, add_fundamental_indicators
 
 TECHNICAL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "technical")
 
+# Cache for fundamental data to avoid repeated API calls
+_fundamental_cache = {}
 
 def load_all_json_strategies():
     """
@@ -25,8 +28,41 @@ def load_all_json_strategies():
     return configs
 
 
-def calc_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    return add_common_indicators(df)
+def get_fundamental_data(ticker):
+    """
+    Get fundamental data for a ticker, with caching to avoid repeated API calls.
+    """
+    # Remove .JK suffix if present to get the base ticker symbol
+    base_ticker = ticker.replace(".JK", "") if ticker.endswith(".JK") else ticker
+
+    # Check cache first
+    if base_ticker in _fundamental_cache:
+        return _fundamental_cache[base_ticker]
+
+    try:
+        # Get fundamental data from yfinance
+        ticker_obj = yf.Ticker(ticker)
+        info = ticker_obj.info
+
+        # Cache the data
+        _fundamental_cache[base_ticker] = info
+        return info
+    except Exception as e:
+        print(f"Error fetching fundamental data for {ticker}: {e}")
+        # Return empty dict if there's an error
+        _fundamental_cache[base_ticker] = {}
+        return {}
+
+
+def calc_indicators(df: pd.DataFrame, ticker=None) -> pd.DataFrame:
+    df = add_common_indicators(df)
+
+    # If ticker is provided, add fundamental indicators
+    if ticker:
+        fundamental_data = get_fundamental_data(ticker)
+        df = add_fundamental_indicators(df, fundamental_data)
+
+    return df
 
 
 def build_env(df: pd.DataFrame) -> dict:
@@ -62,13 +98,13 @@ def build_entry_mask(df: pd.DataFrame, rules: list[str]) -> pd.Series:
     return mask
 
 
-def get_entry_sl_tp_row(df: pd.DataFrame, config: dict):
+def get_entry_sl_tp_row(df: pd.DataFrame, config: dict, ticker=None):
     """
     SCAN: cek hanya bar terakhir.
     - ENTRY: pakai config["entry"]
     - TP/SL: pakai formula di config["tp"][0] dan config["sl"][0]
     """
-    df = calc_indicators(df.copy())
+    df = calc_indicators(df.copy(), ticker)
     if df.empty:
         return None
 
@@ -123,14 +159,14 @@ def get_entry_sl_tp_row(df: pd.DataFrame, config: dict):
 
 
 def backtest(df: pd.DataFrame, amount: float, config: dict,
-             start_date=None, end_date=None):
+             start_date=None, end_date=None, ticker=None):
     """
     BACKTEST generic:
     - ENTRY: pakai config["entry"].
     - TP/SL: pakai config["tp"][0] dan config["sl"][0], dieval di tiap entry bar.
     - max_hold_days: pakai config["max_hold_days"] (default 3).
     """
-    df = calc_indicators(df.copy())
+    df = calc_indicators(df.copy(), ticker)
     if start_date:
         df = df[df.index >= pd.to_datetime(start_date)]
     if end_date:

@@ -1,0 +1,22 @@
+{
+    "name": "GROWTH_FUNDAMENTAL",
+    "description": "Strategi growth investing berdasarkan pertumbuhan pendapatan dan laba yang tinggi serta valuasi yang wajar.",
+    "entry": [
+        "REVENUE_GROWTH >= 15",
+        "EARNINGS_GROWTH >= 15",
+        "FORWARD_PE <= 20",
+        "FORWARD_PE > 0",
+        "PEG_RATIO <= 1.0",
+        "PEG_RATIO > 0",
+        "PRICE_TO_SALES <= 3.0",
+        "PRICE_TO_SALES > 0",
+        "OPERATING_MARGINS >= 10"
+    ],
+    "tp": [
+        "CLOSE * 1.4"
+    ],
+    "sl": [
+        "CLOSE * 0.85"
+    ],
+    "max_hold_days": 45
+}
