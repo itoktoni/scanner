@@ -16,6 +16,7 @@ app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TICKERS_JSON_PATH = os.path.join(BASE_DIR, "tickers_id.json")
+SYARIAH_TICKERS_PATH = os.path.join(BASE_DIR, "syariah_tickers.json")
 
 
 def load_all_tickers():
@@ -31,6 +32,15 @@ def load_all_tickers():
         data = json.load(f)
     # data = list of symbols (string)
     return [{"symbol": s, "name": s} for s in data]
+
+def load_syariah_tickers():
+    """
+    Load daftar saham syariah dari syariah_tickers.json.
+    """
+    if not os.path.exists(SYARIAH_TICKERS_PATH):
+        return []
+    with open(SYARIAH_TICKERS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def parse_tickers(raw: str | None, all_tickers: list[dict]):
@@ -60,14 +70,17 @@ def index():
     if request.method == "GET":
         configs = load_all_json_strategies()
         all_tickers = load_all_tickers()
+        syariah_tickers = load_syariah_tickers()
         return render_template(
             "index.html",
             strategies=configs,
             all_tickers=all_tickers,
+            syariah_tickers=syariah_tickers
         )
 
     configs = load_all_json_strategies()
     all_tickers = load_all_tickers()
+    syariah_tickers = load_syariah_tickers()
 
     tickers_raw = request.form.get("tickers")
     strat_name = request.form.get("strategy")
@@ -107,8 +120,12 @@ def index():
             est_profit_rp = amount * est_profit_pct / 100
             est_loss_rp = amount * est_loss_pct / 100
 
+            ticker_symbol = t.replace(".JK", "")
+            # Tambahkan * untuk ticker non-syariah
+            display_ticker = ticker_symbol + ("" if ticker_symbol in syariah_tickers else "*")
+            
             rows_scan.append({
-                "ticker": t.replace(".JK", ""),
+                "ticker": display_ticker,
                 "price": last_price,
                 "entry_price": entry_price,
                 "stop_loss": sl,
@@ -147,9 +164,13 @@ def index():
                 ticker=t  # Pass ticker info
             )
 
+            ticker_symbol = t.replace(".JK", "")
+            # Tambahkan * untuk ticker non-syariah
+            display_ticker = ticker_symbol + ("" if ticker_symbol in syariah_tickers else "*")
+            
             for tr in trades:
                 backtest_trades_all.append({
-                    "ticker": t.replace(".JK", ""),
+                    "ticker": display_ticker,
                     "entry_date": tr["entry_date"].strftime("%Y-%m-%d"),
                     "close_date": tr["close_date"].strftime("%Y-%m-%d"),
                     "entry_price": tr["entry_price"],
