@@ -165,6 +165,7 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
     - ENTRY: pakai config["entry"].
     - TP/SL: pakai config["tp"][0] dan config["sl"][0], dieval di tiap entry bar.
     - max_hold_days: pakai config["max_hold_days"] (default 3).
+    - Supports average down/up, partial take profit, and dynamic position sizing features.
     """
     df = calc_indicators(df.copy(), ticker)
     if start_date:
@@ -194,10 +195,45 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
         mask_entry = mask_entry & cond
 
     max_hold_days = config.get("max_hold_days", 3)
+    avg_down = config.get("avg_down", None)  # Threshold for averaging down
+    # Handle multiple averaging down thresholds
+    if isinstance(avg_down, list):
+        # Multiple thresholds - will be handled as multiple averaging opportunities
+        pass
+    
+    avg_up = config.get("avg_up", None)      # Threshold for averaging up
+    # Handle multiple averaging up thresholds
+    if isinstance(avg_up, list):
+        # Multiple thresholds - will be handled as multiple averaging opportunities
+        pass
+    partial_tp_levels = config.get("partial_tp", [])             # Partial take profit levels
+    partial_tp_ratios = config.get("partial_tp_ratios", [])      # Ratios for partial take profit
+    # Handle take profit logic: if only one TP level, use it as full TP
+    # If multiple TP levels, treat them as partial TP
+    if len(config.get("tp", [])) == 1 and not partial_tp_levels:
+        # Use single TP as full take profit
+        pass
+    elif len(config.get("tp", [])) > 1 and not partial_tp_levels:
+        # Convert multiple TP levels to partial TP with equal distribution
+        partial_tp_levels = config.get("tp", [])
+        equal_ratio = 1.0 / len(partial_tp_levels)
+        partial_tp_ratios = [equal_ratio] * len(partial_tp_levels)
+        # Clear tp array since we're using partial TP
+        tp = []
+    elif partial_tp_levels and not partial_tp_ratios:
+        # If partial TP levels are specified but no ratios, distribute equally
+        equal_ratio = 1.0 / len(partial_tp_levels)
+        partial_tp_ratios = [equal_ratio] * len(partial_tp_levels)
+    amount_expr = config.get("amount", None)     # Dynamic position sizing expression
 
     trades = []
     in_position = False
     current_trade = None
+    
+    # Check for trailing stop configuration
+    trailing_stop_config = config.get("ts", None)
+    avg_down_count = 0                                   # Track averaging down次数
+    avg_up_count = 0                                     # Track averaging up次数
 
     for i in range(len(df)):
         idx = df.index[i]
@@ -226,12 +262,48 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                 else:
                     tp = float(entry_price + atr * 3)
 
-                if sl_rules:
-                    sl = float(eval(sl_rules[0], {}, env))
+                # Handle stop loss - support for multiple levels
+                sl_levels = sl_rules if isinstance(sl_rules, list) else [sl_rules] if sl_rules else []
+                sl_value = None
+                if sl_levels:
+                    # Evaluate the first stop loss expression
+                    env_sl = {
+                        "PRICE": float(entry_price),
+                        "ATR14": float(atr),
+                        "ENTRY_PRICE": float(entry_price),
+                    }
+                    for col in df.columns:
+                        env_sl[col] = row[col]
+                        env_sl[col.upper()] = row[col]
+                                    
+                    sl_value = float(eval(sl_levels[0], {}, env_sl))
                 else:
-                    sl = float(entry_price - atr * 2)
+                    sl_value = float(entry_price - atr * 2)
 
-                qty = amount // entry_price
+                # Calculate position size - either fixed amount or dynamic
+                if amount_expr:
+                    # Evaluate dynamic amount expression
+                    env = {
+                        "PRICE": float(entry_price),
+                        "ATR14": float(atr),
+                        "FIXED_AMOUNT": float(amount),
+                        "RSI14": float(row.get("RSI14", 50)),
+                        "VOLUME": float(row.get("VOLUME", 0)),
+                        "VMA20": float(row.get("VMA20", 0)),
+                    }
+                    for col in df.columns:
+                        env[col] = row[col]
+                        env[col.upper()] = row[col]
+                    
+                    try:
+                        dynamic_amount = float(eval(amount_expr, {}, env))
+                        qty = dynamic_amount // entry_price
+                    except:
+                        # Fallback to fixed amount if dynamic calculation fails
+                        qty = amount // entry_price
+                else:
+                    qty = amount // entry_price
+                
                 if qty <= 0:
                     continue
 
@@ -243,24 +315,249 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                     "take_profit": float(tp),
                     "qty": float(qty),
                     "bars_held": 0,
+                    "initial_qty": float(qty),              # Store initial quantity
+                    "avg_down_count": 0,                    # Track averaging down次数
+                    "avg_up_count": 0,                      # Track averaging up次数
+                    "partial_tp_executed": [False] * len(partial_tp_levels) if partial_tp_levels else [],  # Track partial TP execution
+                    "highest_price": float(entry_price),     # Track highest price for trailing stop
+                    "trailing_stop_level": None,            # Current trailing stop level
                 }
+                
+                # Initialize trailing stop if configured
+                if trailing_stop_config:
+                    # Parse trailing stop configuration (e.g., "2%" or "0.02")
+                    if isinstance(trailing_stop_config, str) and trailing_stop_config.endswith('%'):
+                        ts_percent = float(trailing_stop_config[:-1]) / 100
+                    else:
+                        ts_percent = float(trailing_stop_config) if trailing_stop_config else 0.02
+                    
+                    current_trade["trailing_stop_percent"] = ts_percent
+                    current_trade["trailing_stop_level"] = float(entry_price * (1 - ts_percent))
         else:
             high = row["High"]
             low = row["Low"]
             current_trade["bars_held"] += 1
+            
+            # Update trailing stop level if configured
+            if current_trade.get("trailing_stop_level") is not None:
+                # Update highest price seen since entry
+                current_trade["highest_price"] = max(current_trade["highest_price"], float(row["HIGH"]))
+                
+                # Update trailing stop level based on highest price
+                ts_percent = current_trade["trailing_stop_percent"]
+                new_trailing_level = current_trade["highest_price"] * (1 - ts_percent)
+                
+                # Only move trailing stop up, never down
+                if new_trailing_level > current_trade["trailing_stop_level"]:
+                    current_trade["trailing_stop_level"] = new_trailing_level
 
             exit_price = None
             exit_reason = None
+            exit_qty = current_trade["qty"]  # Default to exiting all positions
 
-            if low <= current_trade["stop_loss"]:
-                exit_price = current_trade["stop_loss"]
-                exit_reason = "SL Hit"
-            elif high >= current_trade["take_profit"]:
-                exit_price = current_trade["take_profit"]
-                exit_reason = "TP Hit"
-            elif current_trade["bars_held"] >= max_hold_days:
-                exit_price = row["Close"]
-                exit_reason = "MaxHold Exit"
+            # Check for partial take profit levels
+            if partial_tp_levels and partial_tp_ratios:
+                for i, (tp_level, tp_ratio) in enumerate(zip(partial_tp_levels, partial_tp_ratios)):
+                    # Evaluate the TP level expression
+                    env = {
+                        "PRICE": float(row["CLOSE"]),
+                        "ATR14": float(row.get("ATR14", np.nan)),
+                    }
+                    for col in df.columns:
+                        env[col] = row[col]
+                        env[col.upper()] = row[col]
+                    
+                    actual_tp_level = float(eval(tp_level, {}, env))
+                    
+                    # If high crosses this partial TP level and it hasn't been executed yet
+                    if high >= actual_tp_level and not current_trade["partial_tp_executed"][i]:
+                        # Execute partial take profit
+                        partial_qty = current_trade["initial_qty"] * tp_ratio
+                        # Reduce position size
+                        current_trade["qty"] -= partial_qty
+                        current_trade["partial_tp_executed"][i] = True
+                        
+                        # Record partial exit
+                        partial_pnl = (actual_tp_level - current_trade["entry_price"]) * partial_qty
+                        partial_roi = (actual_tp_level / current_trade["entry_price"] - 1) * 100
+                        
+                        trades.append({
+                            "entry_date": current_trade["entry_date"],
+                            "close_date": idx,
+                            "entry_price": current_trade["entry_price"],
+                            "exit_price": float(actual_tp_level),
+                            "pnl": float(partial_pnl),
+                            "roi_pct": float(partial_roi),
+                            "hold_period": int((idx - current_trade["entry_date"]).days),
+                            "exit_reason": f"Partial TP {i+1}",
+                            "stop_loss": current_trade["stop_loss"],
+                            "take_profit": current_trade["take_profit"],
+                        })
+                        
+                        # If all shares are sold, exit position
+                        if current_trade["qty"] <= 0:
+                            in_position = False
+                            current_trade = None
+                            break
+                        
+                        # Continue to check other exit conditions
+
+            # Check for averaging down opportunity
+            avg_down_thresholds = avg_down if isinstance(avg_down, list) else [avg_down] if avg_down else []
+            
+            for i, threshold in enumerate(avg_down_thresholds):
+                if threshold and not exit_price and current_trade["avg_down_count"] < len(avg_down_thresholds):  # Allow multiple averaging downs
+                    # Evaluate the averaging down threshold expression
+                    env = {
+                        "PRICE": float(row["CLOSE"]),
+                        "ATR14": float(row.get("ATR14", np.nan)),
+                    }
+                    for col in df.columns:
+                        env[col] = row[col]
+                        env[col.upper()] = row[col]
+                    
+                    avg_down_price = float(eval(threshold, {}, env))
+                    
+                    # If current price is below the averaging down threshold
+                    if row["CLOSE"] <= avg_down_price:
+                        # Add to position (use dynamic amount if specified, otherwise double initial position)
+                        if amount_expr:
+                            # Evaluate dynamic amount for averaging
+                            env_dyn = {
+                                "PRICE": float(row["CLOSE"]),
+                                "ATR14": float(row.get("ATR14", np.nan)),
+                                "FIXED_AMOUNT": float(amount),
+                                "RSI14": float(row.get("RSI14", 50)),
+                                "VOLUME": float(row.get("VOLUME", 0)),
+                                "VMA20": float(row.get("VMA20", 0)),
+                            }
+                            for col in df.columns:
+                                env_dyn[col] = row[col]
+                                env_dyn[col.upper()] = row[col]
+                            
+                            try:
+                                dynamic_amount = float(eval(amount_expr, {}, env_dyn))
+                                additional_qty = dynamic_amount // row["CLOSE"]
+                            except:
+                                # Fallback to initial position size
+                                additional_qty = current_trade["initial_qty"]
+                        else:
+                            additional_qty = current_trade["initial_qty"]
+                        
+                        new_total_qty = current_trade["qty"] + additional_qty
+                        new_entry_price = ((current_trade["entry_price"] * current_trade["qty"]) + 
+                                          (row["CLOSE"] * additional_qty)) / new_total_qty
+                        
+                        current_trade["qty"] = new_total_qty
+                        current_trade["entry_price"] = new_entry_price
+                        current_trade["avg_down_count"] += 1
+                        
+                        # Adjust stop loss (tighten it slightly)
+                        current_trade["stop_loss"] = new_entry_price - (float(row.get("ATR14", np.nan)) * 1.5)
+                        
+                        # Continue to next iteration without exiting
+                        continue
+
+            # Check for averaging up opportunity
+            avg_up_thresholds = avg_up if isinstance(avg_up, list) else [avg_up] if avg_up else []
+            
+            for i, threshold in enumerate(avg_up_thresholds):
+                if threshold and not exit_price and current_trade["avg_up_count"] < len(avg_up_thresholds):  # Allow multiple averaging ups
+                    # Evaluate the averaging up threshold expression
+                    env = {
+                        "PRICE": float(row["CLOSE"]),
+                        "ATR14": float(row.get("ATR14", np.nan)),
+                    }
+                    for col in df.columns:
+                        env[col] = row[col]
+                        env[col.upper()] = row[col]
+                    
+                    avg_up_price = float(eval(threshold, {}, env))
+                    
+                    # If current price is above the averaging up threshold
+                    if row["CLOSE"] >= avg_up_price:
+                        # Add to position (use dynamic amount if specified, otherwise double initial position)
+                        if amount_expr:
+                            # Evaluate dynamic amount for averaging
+                            env_dyn = {
+                                "PRICE": float(row["CLOSE"]),
+                                "ATR14": float(row.get("ATR14", np.nan)),
+                                "FIXED_AMOUNT": float(amount),
+                                "RSI14": float(row.get("RSI14", 50)),
+                                "VOLUME": float(row.get("VOLUME", 0)),
+                                "VMA20": float(row.get("VMA20", 0)),
+                            }
+                            for col in df.columns:
+                                env_dyn[col] = row[col]
+                                env_dyn[col.upper()] = row[col]
+                            
+                            try:
+                                dynamic_amount = float(eval(amount_expr, {}, env_dyn))
+                                additional_qty = dynamic_amount // row["CLOSE"]
+                            except:
+                                # Fallback to initial position size
+                                additional_qty = current_trade["initial_qty"]
+                        else:
+                            additional_qty = current_trade["initial_qty"]
+                        
+                        new_total_qty = current_trade["qty"] + additional_qty
+                        new_entry_price = ((current_trade["entry_price"] * current_trade["qty"]) + 
+                                          (row["CLOSE"] * additional_qty)) / new_total_qty
+                        
+                        current_trade["qty"] = new_total_qty
+                        current_trade["entry_price"] = new_entry_price
+                        current_trade["avg_up_count"] += 1
+                        
+                        # Continue to next iteration without exiting
+                        continue
+
+            # Check standard exit conditions if no partial TP executed
+            if not exit_price and not partial_tp_levels:
+                # Check trailing stop first
+                trailing_stop_triggered = False
+                if current_trade.get("trailing_stop_level") is not None:
+                    # If current price is below trailing stop level
+                    if low <= current_trade["trailing_stop_level"]:
+                        exit_price = current_trade["trailing_stop_level"]
+                        exit_reason = "Trailing Stop Hit"
+                        trailing_stop_triggered = True
+                            
+                # If trailing stop not triggered, check regular stop loss levels
+                if not trailing_stop_triggered:
+                    # Handle multiple stop loss levels
+                    sl_rules = config.get("sl", [])
+                    sl_levels = sl_rules if isinstance(sl_rules, list) else [sl_rules] if sl_rules else []
+                    sl_hit = False
+                                
+                    # Check if any stop loss level is hit
+                    for i, sl_expr in enumerate(sl_levels):
+                        if sl_expr:
+                            # Evaluate the stop loss expression
+                            env = {
+                                "PRICE": float(row["CLOSE"]),
+                                "ATR14": float(row.get("ATR14", np.nan)),
+                                "ENTRY_PRICE": float(current_trade["entry_price"]),
+                            }
+                            for col in df.columns:
+                                env[col] = row[col]
+                                env[col.upper()] = row[col]
+                                        
+                            sl_level = float(eval(sl_expr, {}, env))
+                                        
+                            # If low crosses this stop loss level
+                            if low <= sl_level:
+                                exit_price = sl_level
+                                exit_reason = f"SL Hit (Level {i+1})"
+                                sl_hit = True
+                                break
+                                
+                    if not sl_hit:
+                        if high >= current_trade["take_profit"]:
+                            exit_price = current_trade["take_profit"]
+                            exit_reason = "TP Hit"
+                        elif current_trade["bars_held"] >= max_hold_days:
+                            exit_price = row["Close"]
+                            exit_reason = "MaxHold Exit"
 
             if exit_price is not None:
                 pnl = (exit_price - current_trade["entry_price"]) * current_trade["qty"]
