@@ -8,7 +8,7 @@
         "MA50 > MA200",
         "RSI14 >= 50",
         "RSI14 <= 70",
-        "SPIKE > 0",
+        "PERCENT_SPIKE > 0",
         "VOLUME >= VMA20",
         "VOLUME <= VMA20 * 1.5",
         "CLOSE <= VWAP * 1.05"

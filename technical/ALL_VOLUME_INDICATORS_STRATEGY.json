@@ -1,0 +1,17 @@
+{
+  "name": "ALL_VOLUME_INDICATORS_STRATEGY",
+  "description": "Strategy combining PERCENT_SPIKE, VOLUME_SPIKE, and RVOL for comprehensive volume analysis.",
+  "entry": [
+    "PERCENT_SPIKE > 0",
+    "VOLUME_SPIKE > 1.5",
+    "RVOL > 1.5",
+    "CLOSE > MA20"
+  ],
+  "tp": [
+    "CLOSE + (ATR14 * 2)"
+  ],
+  "sl": [
+    "CLOSE - (ATR14 * 1.5)"
+  ],
+  "max_hold_days": 5
+}

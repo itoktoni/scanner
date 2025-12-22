@@ -11,6 +11,11 @@ TECHNICAL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "techni
 
 # Cache for fundamental data to avoid repeated API calls
 _fundamental_cache = {}
+_fundamental_cache_timestamps = {}
+import time
+
+# Cache timeout (24 hours)
+CACHE_TIMEOUT = 24 * 60 * 60
 
 def load_all_json_strategies():
     """
@@ -35,27 +40,34 @@ def get_fundamental_data(ticker):
     # Remove .JK suffix if present to get the base ticker symbol
     base_ticker = ticker.replace(".JK", "") if ticker.endswith(".JK") else ticker
 
-    # Check cache first
+    # Check cache first with timestamp
+    current_time = time.time()
     if base_ticker in _fundamental_cache:
-        return _fundamental_cache[base_ticker]
+        # Check if cache is still valid (less than 24 hours old)
+        if base_ticker in _fundamental_cache_timestamps:
+            cache_time = _fundamental_cache_timestamps[base_ticker]
+            if current_time - cache_time < CACHE_TIMEOUT:
+                return _fundamental_cache[base_ticker]
 
     try:
         # Get fundamental data from yfinance
         ticker_obj = yf.Ticker(ticker)
         info = ticker_obj.info
 
-        # Cache the data
+        # Cache the data with timestamp
         _fundamental_cache[base_ticker] = info
+        _fundamental_cache_timestamps[base_ticker] = current_time
         return info
     except Exception as e:
         print(f"Error fetching fundamental data for {ticker}: {e}")
         # Return empty dict if there's an error
         _fundamental_cache[base_ticker] = {}
+        _fundamental_cache_timestamps[base_ticker] = current_time
         return {}
 
 
-def calc_indicators(df: pd.DataFrame, ticker=None) -> pd.DataFrame:
-    df = add_common_indicators(df)
+def calc_indicators(df: pd.DataFrame, ticker=None, required_indicators=None) -> pd.DataFrame:
+    df = add_common_indicators(df, required_indicators)
 
     # If ticker is provided, add fundamental indicators
     if ticker:
@@ -78,6 +90,36 @@ def build_env(df: pd.DataFrame) -> dict:
     return env
 
 
+def extract_required_indicators(rules: list[str]) -> set:
+    """
+    Extract required indicators from strategy rules.
+    """
+    indicators = set()
+    if not rules:
+        return indicators
+    
+    # Common indicator patterns
+    common_indicators = [
+        "MA", "EMA", "VMA", "ATR", "RSI", "MACD", "STOCH", "BB", 
+        "VWAP", "VWMA", "PERCENT_SPIKE", "VOLUME_SPIKE", "RVOL",
+        "THREE_RED_CANDLES", "THREE_GREEN_CANDLES", "DOJI", "HAMMER",
+        "HANGING_MAN", "SHOOTING_STAR", "MORNING_STAR", "EVENING_STAR",
+        "HH", "LL", "FIB", "SUPPORT", "RESISTANCE", "TRADE_FREQUENCY",
+        "HIGH_VOL_DAYS"
+    ]
+    
+    for rule in rules:
+        for indicator in common_indicators:
+            if indicator in rule:
+                # Extract full indicator name (e.g., MA20, RSI14, etc.)
+                import re
+                pattern = rf'\b{indicator}\d*'  # Match indicator followed by optional digits
+                matches = re.findall(pattern, rule)
+                indicators.update(matches)
+    
+    return indicators
+
+
 def build_entry_mask(df: pd.DataFrame, rules: list[str]) -> pd.Series:
     """
     Terima list rules string, misalnya:
@@ -87,7 +129,9 @@ def build_entry_mask(df: pd.DataFrame, rules: list[str]) -> pd.Series:
     if not rules:
         return pd.Series(False, index=df.index)
 
-    df = calc_indicators(df.copy())
+    # Extract required indicators to optimize calculation
+    required_indicators = extract_required_indicators(rules)
+    df = calc_indicators(df.copy(), required_indicators=required_indicators)
     env = build_env(df)
     mask = pd.Series(True, index=df.index)
 

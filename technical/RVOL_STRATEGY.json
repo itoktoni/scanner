@@ -1,0 +1,16 @@
+{
+  "name": "RVOL_STRATEGY",
+  "description": "Strategy using RVOL indicator to identify stocks with unusual volume activity compared to recent average.",
+  "entry": [
+    "RVOL > 2",
+    "CLOSE > OPEN",
+    "PRICE_RETURN_1D_PCT > 1"
+  ],
+  "tp": [
+    "CLOSE * 1.03"
+  ],
+  "sl": [
+    "CLOSE * 0.97"
+  ],
+  "max_hold_days": 2
+}

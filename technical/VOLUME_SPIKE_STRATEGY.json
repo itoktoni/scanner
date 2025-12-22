@@ -1,0 +1,18 @@
+{
+  "name": "VOLUME_SPIKE_STRATEGY",
+  "description": "Strategy using VOLUME_SPIKE indicator to identify stocks with unusual volume activity.",
+  "entry": [
+    "VOLUME_SPIKE > 1",
+    "VOLUME_SPIKE <= 2",
+    "MACD_LINE <= MACD_SIGNAL",
+    "PRICE > MA50",
+    "PRICE > MA200"
+  ],
+  "tp": [
+    "CLOSE * 1.05"
+  ],
+  "sl": [
+    "CLOSE * 0.95"
+  ],
+  "max_hold_days": 3
+}
