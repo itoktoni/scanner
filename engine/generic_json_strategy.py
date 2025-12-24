@@ -26,10 +26,21 @@ def load_all_json_strategies():
     for fname in os.listdir(TECHNICAL_DIR):
         if fname.lower().endswith(".json"):
             path = os.path.join(TECHNICAL_DIR, fname)
-            with open(path, "r") as f:
-                cfg = json.load(f)
-            name = cfg.get("name") or os.path.splitext(fname)[0]
-            configs[name] = cfg
+            try:
+                with open(path, "r") as f:
+                    content = f.read()
+                if not content.strip():
+                    print(f"Warning: Skipping empty file {fname}")
+                    continue
+                cfg = json.loads(content)
+                name = cfg.get("name") or os.path.splitext(fname)[0]
+                configs[name] = cfg
+            except json.JSONDecodeError as e:
+                print(f"Warning: Invalid JSON in {fname}: {e}")
+                continue
+            except Exception as e:
+                print(f"Warning: Error loading {fname}: {e}")
+                continue
     return configs
 
 
@@ -54,10 +65,31 @@ def get_fundamental_data(ticker):
         ticker_obj = yf.Ticker(ticker)
         info = ticker_obj.info
 
+        # Check if info is None or not a dict
+        if info is None:
+            print(f"Warning: No fundamental data available for {ticker} (None)")
+            _fundamental_cache[base_ticker] = {}
+            _fundamental_cache_timestamps[base_ticker] = current_time
+            return {}
+        elif not isinstance(info, dict):
+            print(f"Warning: Invalid fundamental data format for {ticker} (type: {type(info)})")
+            _fundamental_cache[base_ticker] = {}
+            _fundamental_cache_timestamps[base_ticker] = current_time
+            return {}
+
         # Cache the data with timestamp
         _fundamental_cache[base_ticker] = info
         _fundamental_cache_timestamps[base_ticker] = current_time
         return info
+    except TypeError as e:
+        if "argument of type 'NoneType' is not iterable" in str(e):
+            print(f"Warning: yfinance internal error for {ticker} (NoneType iteration)")
+        else:
+            print(f"Error fetching fundamental data for {ticker}: {e}")
+        # Return empty dict if there's an error
+        _fundamental_cache[base_ticker] = {}
+        _fundamental_cache_timestamps[base_ticker] = current_time
+        return {}
     except Exception as e:
         print(f"Error fetching fundamental data for {ticker}: {e}")
         # Return empty dict if there's an error
@@ -97,26 +129,43 @@ def extract_required_indicators(rules: list[str]) -> set:
     indicators = set()
     if not rules:
         return indicators
-    
+
     # Common indicator patterns
     common_indicators = [
-        "MA", "EMA", "VMA", "ATR", "RSI", "MACD", "STOCH", "BB", 
+        "MA", "EMA", "VMA", "ATR", "RSI", "MACD", "STOCH", "BB",
         "VWAP", "VWMA", "PERCENT_SPIKE", "VOLUME_SPIKE", "RVOL",
         "THREE_RED_CANDLES", "THREE_GREEN_CANDLES", "DOJI", "HAMMER",
         "HANGING_MAN", "SHOOTING_STAR", "MORNING_STAR", "EVENING_STAR",
         "HH", "LL", "FIB", "SUPPORT", "RESISTANCE", "TRADE_FREQUENCY",
-        "HIGH_VOL_DAYS"
+        "HIGH_VOL_DAYS",
+        # Fundamental indicators
+        "TRAILING_PE", "FORWARD_PE", "PEG_RATIO", "PRICE_TO_BOOK",
+        "PRICE_TO_SALES", "PRICE_TO_CF", "RETURN_ON_EQUITY", "RETURN_ON_ASSETS",
+        "PROFIT_MARGINS", "GROSS_MARGINS", "OPERATING_MARGINS", "DEBT_TO_EQUITY",
+        "CURRENT_RATIO", "QUICK_RATIO", "TOTAL_CASH_PS", "DIVIDEND_YIELD",
+        "PAYOUT_RATIO", "DIVIDEND_RATE", "REVENUE_GROWTH", "EARNINGS_GROWTH",
+        "REVENUE_PS", "OPERATING_CF", "FREE_CASHFLOW"
     ]
-    
+
     for rule in rules:
         for indicator in common_indicators:
             if indicator in rule:
-                # Extract full indicator name (e.g., MA20, RSI14, etc.)
+                # Extract full indicator name (e.g., MA20, RSI14, TRAILING_PE, etc.)
                 import re
-                pattern = rf'\b{indicator}\d*'  # Match indicator followed by optional digits
+                # For technical indicators, match with optional digits
+                if indicator in ["MA", "EMA", "VMA", "ATR", "RSI", "MACD", "STOCH", "BB",
+                                "VWAP", "VWMA", "PERCENT_SPIKE", "VOLUME_SPIKE", "RVOL",
+                                "THREE_RED_CANDLES", "THREE_GREEN_CANDLES", "DOJI", "HAMMER",
+                                "HANGING_MAN", "SHOOTING_STAR", "MORNING_STAR", "EVENING_STAR",
+                                "HH", "LL", "FIB", "SUPPORT", "RESISTANCE", "TRADE_FREQUENCY",
+                                "HIGH_VOL_DAYS"]:
+                    pattern = rf'\b{indicator}\d*'  # Match indicator followed by optional digits
+                else:
+                    # For fundamental indicators, match exact name
+                    pattern = rf'\b{indicator}\b'
                 matches = re.findall(pattern, rule)
                 indicators.update(matches)
-    
+
     return indicators
 
 
@@ -244,7 +293,7 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
     if isinstance(avg_down, list):
         # Multiple thresholds - will be handled as multiple averaging opportunities
         pass
-    
+
     avg_up = config.get("avg_up", None)      # Threshold for averaging up
     # Handle multiple averaging up thresholds
     if isinstance(avg_up, list):
@@ -273,7 +322,7 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
     trades = []
     in_position = False
     current_trade = None
-    
+
     # Check for trailing stop configuration
     trailing_stop_config = config.get("ts", None)
     avg_down_count = 0                                   # Track averaging down次数
@@ -319,7 +368,7 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                     for col in df.columns:
                         env_sl[col] = row[col]
                         env_sl[col.upper()] = row[col]
-                                    
+
                     sl_value = float(eval(sl_levels[0], {}, env_sl))
                 else:
                     sl_value = float(entry_price - atr * 2)
@@ -338,7 +387,7 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                     for col in df.columns:
                         env[col] = row[col]
                         env[col.upper()] = row[col]
-                    
+
                     try:
                         dynamic_amount = float(eval(amount_expr, {}, env))
                         qty = dynamic_amount // entry_price
@@ -347,7 +396,7 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                         qty = amount // entry_price
                 else:
                     qty = amount // entry_price
-                
+
                 if qty <= 0:
                     continue
 
@@ -366,7 +415,7 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                     "highest_price": float(entry_price),     # Track highest price for trailing stop
                     "trailing_stop_level": None,            # Current trailing stop level
                 }
-                
+
                 # Initialize trailing stop if configured
                 if trailing_stop_config:
                     # Parse trailing stop configuration (e.g., "2%" or "0.02")
@@ -374,23 +423,23 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                         ts_percent = float(trailing_stop_config[:-1]) / 100
                     else:
                         ts_percent = float(trailing_stop_config) if trailing_stop_config else 0.02
-                    
+
                     current_trade["trailing_stop_percent"] = ts_percent
                     current_trade["trailing_stop_level"] = float(entry_price * (1 - ts_percent))
         else:
             high = row["High"]
             low = row["Low"]
             current_trade["bars_held"] += 1
-            
+
             # Update trailing stop level if configured
             if current_trade.get("trailing_stop_level") is not None:
                 # Update highest price seen since entry
                 current_trade["highest_price"] = max(current_trade["highest_price"], float(row["HIGH"]))
-                
+
                 # Update trailing stop level based on highest price
                 ts_percent = current_trade["trailing_stop_percent"]
                 new_trailing_level = current_trade["highest_price"] * (1 - ts_percent)
-                
+
                 # Only move trailing stop up, never down
                 if new_trailing_level > current_trade["trailing_stop_level"]:
                     current_trade["trailing_stop_level"] = new_trailing_level
@@ -410,9 +459,9 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                     for col in df.columns:
                         env[col] = row[col]
                         env[col.upper()] = row[col]
-                    
+
                     actual_tp_level = float(eval(tp_level, {}, env))
-                    
+
                     # If high crosses this partial TP level and it hasn't been executed yet
                     if high >= actual_tp_level and not current_trade["partial_tp_executed"][i]:
                         # Execute partial take profit
@@ -420,11 +469,11 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                         # Reduce position size
                         current_trade["qty"] -= partial_qty
                         current_trade["partial_tp_executed"][i] = True
-                        
+
                         # Record partial exit
                         partial_pnl = (actual_tp_level - current_trade["entry_price"]) * partial_qty
                         partial_roi = (actual_tp_level / current_trade["entry_price"] - 1) * 100
-                        
+
                         trades.append({
                             "entry_date": current_trade["entry_date"],
                             "close_date": idx,
@@ -437,18 +486,18 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                             "stop_loss": current_trade["stop_loss"],
                             "take_profit": current_trade["take_profit"],
                         })
-                        
+
                         # If all shares are sold, exit position
                         if current_trade["qty"] <= 0:
                             in_position = False
                             current_trade = None
                             break
-                        
+
                         # Continue to check other exit conditions
 
             # Check for averaging down opportunity
             avg_down_thresholds = avg_down if isinstance(avg_down, list) else [avg_down] if avg_down else []
-            
+
             for i, threshold in enumerate(avg_down_thresholds):
                 if threshold and not exit_price and current_trade["avg_down_count"] < len(avg_down_thresholds):  # Allow multiple averaging downs
                     # Evaluate the averaging down threshold expression
@@ -459,9 +508,9 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                     for col in df.columns:
                         env[col] = row[col]
                         env[col.upper()] = row[col]
-                    
+
                     avg_down_price = float(eval(threshold, {}, env))
-                    
+
                     # If current price is below the averaging down threshold
                     if row["CLOSE"] <= avg_down_price:
                         # Add to position (use dynamic amount if specified, otherwise double initial position)
@@ -478,7 +527,7 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                             for col in df.columns:
                                 env_dyn[col] = row[col]
                                 env_dyn[col.upper()] = row[col]
-                            
+
                             try:
                                 dynamic_amount = float(eval(amount_expr, {}, env_dyn))
                                 additional_qty = dynamic_amount // row["CLOSE"]
@@ -487,24 +536,24 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                                 additional_qty = current_trade["initial_qty"]
                         else:
                             additional_qty = current_trade["initial_qty"]
-                        
+
                         new_total_qty = current_trade["qty"] + additional_qty
-                        new_entry_price = ((current_trade["entry_price"] * current_trade["qty"]) + 
+                        new_entry_price = ((current_trade["entry_price"] * current_trade["qty"]) +
                                           (row["CLOSE"] * additional_qty)) / new_total_qty
-                        
+
                         current_trade["qty"] = new_total_qty
                         current_trade["entry_price"] = new_entry_price
                         current_trade["avg_down_count"] += 1
-                        
+
                         # Adjust stop loss (tighten it slightly)
                         current_trade["stop_loss"] = new_entry_price - (float(row.get("ATR14", np.nan)) * 1.5)
-                        
+
                         # Continue to next iteration without exiting
                         continue
 
             # Check for averaging up opportunity
             avg_up_thresholds = avg_up if isinstance(avg_up, list) else [avg_up] if avg_up else []
-            
+
             for i, threshold in enumerate(avg_up_thresholds):
                 if threshold and not exit_price and current_trade["avg_up_count"] < len(avg_up_thresholds):  # Allow multiple averaging ups
                     # Evaluate the averaging up threshold expression
@@ -515,9 +564,9 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                     for col in df.columns:
                         env[col] = row[col]
                         env[col.upper()] = row[col]
-                    
+
                     avg_up_price = float(eval(threshold, {}, env))
-                    
+
                     # If current price is above the averaging up threshold
                     if row["CLOSE"] >= avg_up_price:
                         # Add to position (use dynamic amount if specified, otherwise double initial position)
@@ -534,7 +583,7 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                             for col in df.columns:
                                 env_dyn[col] = row[col]
                                 env_dyn[col.upper()] = row[col]
-                            
+
                             try:
                                 dynamic_amount = float(eval(amount_expr, {}, env_dyn))
                                 additional_qty = dynamic_amount // row["CLOSE"]
@@ -543,15 +592,15 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                                 additional_qty = current_trade["initial_qty"]
                         else:
                             additional_qty = current_trade["initial_qty"]
-                        
+
                         new_total_qty = current_trade["qty"] + additional_qty
-                        new_entry_price = ((current_trade["entry_price"] * current_trade["qty"]) + 
+                        new_entry_price = ((current_trade["entry_price"] * current_trade["qty"]) +
                                           (row["CLOSE"] * additional_qty)) / new_total_qty
-                        
+
                         current_trade["qty"] = new_total_qty
                         current_trade["entry_price"] = new_entry_price
                         current_trade["avg_up_count"] += 1
-                        
+
                         # Continue to next iteration without exiting
                         continue
 
@@ -565,14 +614,14 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                         exit_price = current_trade["trailing_stop_level"]
                         exit_reason = "Trailing Stop Hit"
                         trailing_stop_triggered = True
-                            
+
                 # If trailing stop not triggered, check regular stop loss levels
                 if not trailing_stop_triggered:
                     # Handle multiple stop loss levels
                     sl_rules = config.get("sl", [])
                     sl_levels = sl_rules if isinstance(sl_rules, list) else [sl_rules] if sl_rules else []
                     sl_hit = False
-                                
+
                     # Check if any stop loss level is hit
                     for i, sl_expr in enumerate(sl_levels):
                         if sl_expr:
@@ -585,16 +634,16 @@ def backtest(df: pd.DataFrame, amount: float, config: dict,
                             for col in df.columns:
                                 env[col] = row[col]
                                 env[col.upper()] = row[col]
-                                        
+
                             sl_level = float(eval(sl_expr, {}, env))
-                                        
+
                             # If low crosses this stop loss level
                             if low <= sl_level:
                                 exit_price = sl_level
                                 exit_reason = f"SL Hit (Level {i+1})"
                                 sl_hit = True
                                 break
-                                
+
                     if not sl_hit:
                         if high >= current_trade["take_profit"]:
                             exit_price = current_trade["take_profit"]

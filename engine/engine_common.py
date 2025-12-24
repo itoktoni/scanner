@@ -80,6 +80,9 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
     - SHOOTING_STAR : Numeric indicator (1/0) untuk pola Shooting Star (bearish reversal). 1 = pola ditemukan, 0 = tidak ditemukan.
     - MORNING_STAR : Numeric indicator (1/0) untuk pola Morning Star (bullish reversal). 1 = pola ditemukan, 0 = tidak ditemukan.
     - EVENING_STAR : Numeric indicator (1/0) untuk pola Evening Star (bearish reversal). 1 = pola ditemukan, 0 = tidak ditemukan.
+    - ADX14           : Average Directional Index (14). Indikator kekuatan tren, > 25 menunjukkan tren kuat.
+    - ADX_PLUS        : Positive Directional Indicator (+DI14). Mengukur kekuatan tren naik.
+    - ADX_MINUS       : Negative Directional Indicator (-DI14). Mengukur kekuatan tren turun.
     """
 
     # 1. Copy data agar aman
@@ -92,17 +95,28 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
         # Extract single-level columns for price data
         df_single = pd.DataFrame()
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
-            df_single[col] = df[col].iloc[:, 0] if isinstance(df[col], pd.DataFrame) else df[col]
+            if col in df.columns:
+                df_single[col] = df[col].iloc[:, 0] if isinstance(df[col], pd.DataFrame) else df[col]
+            elif col.lower() in df.columns:
+                df_single[col] = df[col.lower()].iloc[:, 0] if isinstance(df[col.lower()], pd.DataFrame) else df[col.lower()]
         df = df_single
 
     # 3. Mapping Standard Columns (Huruf Besar)
-    # Asumsi input yfinance punya kolom: Open, High, Low, Close, Volume
-    df["OPEN"] = df["Open"]
-    df["HIGH"] = df["High"]
-    df["LOW"] = df["Low"]
-    df["CLOSE"] = df["Close"]
-    df["PRICE"] = df["Close"]   # Alias
-    df["VOLUME"] = df["Volume"]
+    # Handle both uppercase and lowercase column names
+    def get_col(df, name):
+        if name in df.columns:
+            return df[name]
+        elif name.lower() in df.columns:
+            return df[name.lower()]
+        else:
+            raise KeyError(f"Column {name} not found in DataFrame")
+
+    df["OPEN"] = get_col(df, "Open")
+    df["HIGH"] = get_col(df, "High")
+    df["LOW"] = get_col(df, "Low")
+    df["CLOSE"] = get_col(df, "Close")
+    df["PRICE"] = df["CLOSE"]   # Alias
+    df["VOLUME"] = get_col(df, "Volume")
 
     # Variabel lokal untuk perhitungan
     close = df["CLOSE"]
@@ -115,7 +129,7 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
         if required_indicators is None:
             return True
         return any(ind.startswith(indicator_prefix) for ind in required_indicators)
-    
+
     # Helper function to extract window from indicator name
     def get_window(indicator_name, default_window):
         if required_indicators is None:
@@ -148,7 +162,7 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
         # Volume hari ini dibagi rata-rata volume 30 hari
         volume_30_avg = volume.rolling(30).mean()
         df["VOLUME_SPIKE"] = volume / volume_30_avg.replace(0, np.nan)
-    
+
     # 5c. Relative Volume (RVOL)
     if need_indicator("RVOL"):
         # Volume hari ini dibagi rata-rata volume 10 hari
@@ -159,7 +173,7 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
     # Calculate only required moving averages
     ma_windows = []
     vma_windows = []
-    
+
     if required_indicators is not None:
         # Extract required MA and VMA windows
         import re
@@ -172,7 +186,7 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
                 match = re.search(r'VMA(\d+)', ind)
                 if match:
                     vma_windows.append(int(match.group(1)))
-        
+
         # Remove duplicates and sort
         ma_windows = sorted(list(set(ma_windows)))
         vma_windows = sorted(list(set(vma_windows)))
@@ -278,7 +292,7 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
             tr3 = (low - close.shift(1)).abs()
             tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
             df["ATR14"] = tr.rolling(14).mean()
-        
+
         df["SUPPORT"] = df["MA20"] - (df["ATR14"] * 1.5)
         df["RESISTANCE"] = df["MA20"] + (df["ATR14"] * 1.5)
 
@@ -356,7 +370,7 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
         body_size = (df["CLOSE"] - df["OPEN"]).abs()
         upper_shadow = df["HIGH"] - df[["CLOSE", "OPEN"]].max(axis=1)
         lower_shadow = df[["CLOSE", "OPEN"]].min(axis=1) - df["LOW"]
-        
+
         total_range = df["HIGH"] - df["LOW"]
         shooting_star_condition = (
             (upper_shadow >= body_size * 2) &
@@ -390,7 +404,65 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
         evening_star_condition_corrected = first_candle_green & second_candle_small & (df["CLOSE"] < df["OPEN"])
         df["EVENING_STAR"] = evening_star_condition_corrected.astype(int)
 
-    # 11. Frekuensi Perdagangan (Trading Frequency)
+    # 11. ADX (Average Directional Index)
+    if need_indicator("ADX"):
+        # Calculate True Range (TR)
+        tr1 = high - low
+        tr2 = np.abs(high - close.shift(1))
+        tr3 = np.abs(low - close.shift(1))
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+        # Calculate Directional Movement (+DM and -DM)
+        up_move = high - high.shift(1)
+        down_move = low.shift(1) - low
+
+        # Positive Directional Movement (+DM)
+        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+        plus_dm = pd.Series(plus_dm, index=high.index)
+
+        # Negative Directional Movement (-DM)
+        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+        minus_dm = pd.Series(minus_dm, index=high.index)
+
+        # Smoothed True Range and Directional Movements (Wilder's Method)
+        atr_period = 14
+        smoothed_tr = pd.Series(index=true_range.index, dtype=float)
+        smoothed_plus_dm = pd.Series(index=plus_dm.index, dtype=float)
+        smoothed_minus_dm = pd.Series(index=minus_dm.index, dtype=float)
+
+        # Initialize first values
+        smoothed_tr.iloc[atr_period-1] = true_range[:atr_period].sum()
+        smoothed_plus_dm.iloc[atr_period-1] = plus_dm[:atr_period].sum()
+        smoothed_minus_dm.iloc[atr_period-1] = minus_dm[:atr_period].sum()
+
+        # Calculate remaining values using Wilder's smoothing method
+        for i in range(atr_period, len(true_range)):
+            smoothed_tr.iloc[i] = smoothed_tr.iloc[i-1] - (smoothed_tr.iloc[i-1] / atr_period) + true_range.iloc[i]
+            smoothed_plus_dm.iloc[i] = smoothed_plus_dm.iloc[i-1] - (smoothed_plus_dm.iloc[i-1] / atr_period) + plus_dm.iloc[i]
+            smoothed_minus_dm.iloc[i] = smoothed_minus_dm.iloc[i-1] - (smoothed_minus_dm.iloc[i-1] / atr_period) + minus_dm.iloc[i]
+
+        # Calculate Directional Indicators
+        plus_di = (smoothed_plus_dm / smoothed_tr) * 100
+        minus_di = (smoothed_minus_dm / smoothed_tr) * 100
+
+        # Calculate Directional Movement Index (DX)
+        dx_divisor = (np.abs(plus_di) + np.abs(minus_di)).replace(0, np.nan)
+        dx = (np.abs(plus_di - minus_di) / dx_divisor) * 100
+
+        # Calculate ADX (Average Directional Index)
+        adx = pd.Series(index=dx.index, dtype=float)
+        adx.iloc[atr_period*2-1] = dx[atr_period:atr_period*2].mean()  # Initial ADX
+
+        # Smoothed ADX calculation (Wilder's method)
+        for i in range(atr_period*2, len(dx)):
+            adx.iloc[i] = ((adx.iloc[i-1] * (atr_period - 1)) + dx.iloc[i]) / atr_period
+
+        # Assign to DataFrame
+        df["ADX14"] = adx
+        df["ADX_PLUS"] = plus_di
+        df["ADX_MINUS"] = minus_di
+
+    # 12. Frekuensi Perdagangan (Trading Frequency)
     if need_indicator("TRADE_FREQUENCY") or need_indicator("HIGH_VOL_DAYS"):
         # Mengukur seberapa sering saham diperdagangkan berdasarkan volume
         avg_volume = volume.rolling(20).mean()
@@ -400,7 +472,7 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
         high_vol_mask = volume > (avg_volume * 1.5)
         df["HIGH_VOL_DAYS"] = high_vol_mask.rolling(30).sum()
 
-    # 12. Final Cleanup (Isi NaN dengan 0 agar engine eval aman)
+    # 13. Final Cleanup (Isi NaN dengan 0 agar engine eval aman)
     # Fill Forward dulu (untuk data yg bolong dikit), lalu Fill 0 (untuk awal data)
     df.ffill(inplace=True)
     df.fillna(0, inplace=True)
@@ -458,6 +530,11 @@ def add_fundamental_indicators(df: pd.DataFrame, ticker_info: dict) -> pd.DataFr
     df = df.copy()
     if df.empty:
         return df
+
+    # Validate ticker_info
+    if ticker_info is None or not isinstance(ticker_info, dict):
+        print(f"Warning: Invalid fundamental data format, using defaults")
+        ticker_info = {}
 
     # Mapping fundamental indicators dari yfinance info
     fundamentals_map = {

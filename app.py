@@ -61,9 +61,38 @@ def parse_tickers(raw: str | None, all_tickers: list[dict]):
 
 def get_price_data(ticker, period="2y"):
     print(f"[*********************100%***********************]  1 of 1 {ticker} completed")
-    df = yf.download(ticker, period=period, auto_adjust=False, progress=False)
+    try:
+        df = yf.download(ticker, period=period, auto_adjust=False, progress=False)
+    except Exception as e:
+        print(f"Error downloading {ticker}: {e}")
+        return pd.DataFrame()
+
+    if df.empty:
+        return df
+
+    # Handle MultiIndex columns properly
     if isinstance(df.columns, pd.MultiIndex):
-        df = df.xs(ticker, level=1, axis=1)
+        # Get the first valid set of OHLCV data by taking the first occurrence of each expected column
+        expected_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        new_df = pd.DataFrame(index=df.index)
+
+        for col in expected_cols:
+            # Find all columns with this name (at level 0) and use the first one
+            matching_cols = [c for c in df.columns if c[0] == col]
+            if matching_cols:
+                new_df[col.lower()] = df[matching_cols[0]]
+
+        df = new_df
+
+    # Standardize column names to lowercase
+    df.columns = [c.lower() if isinstance(c, str) else c for c in df.columns]
+
+    # Validate that we have standard OHLCV columns
+    expected_cols = ['open', 'high', 'low', 'close', 'volume']
+    if not all(col in df.columns for col in expected_cols[:4]):  # At least OHLC
+        print(f"Warning: {ticker} has invalid columns: {list(df.columns)}")
+        return pd.DataFrame()
+
     return df
 
 
@@ -73,13 +102,13 @@ def determine_optimal_period(config):
     """
     # Default to 2 years
     period = "2y"
-    
+
     # Extract all rules from the strategy
     rules = config.get("entry", []) + config.get("tp", []) + config.get("sl", [])
-    
+
     # Look for indicators that require longer data periods
     max_window = 0
-    
+
     # Check for moving averages
     import re
     for rule in rules:
@@ -87,7 +116,7 @@ def determine_optimal_period(config):
         ma_matches = re.findall(r'(?:MA|VMA|HH|LL)(\d+)', rule)
         for match in ma_matches:
             max_window = max(max_window, int(match))
-        
+
         # Check for other indicators with known windows
         if 'ATR14' in rule or 'RSI14' in rule:
             max_window = max(max_window, 14)
@@ -101,7 +130,7 @@ def determine_optimal_period(config):
             max_window = max(max_window, 50)
         if 'PERCENT_SPIKE' in rule or 'HIGH_VOL_DAYS' in rule:
             max_window = max(max_window, 30)
-    
+
     # Add buffer for calculations and ensure we have enough data
     if max_window > 0:
         # Convert to appropriate period string
@@ -113,7 +142,7 @@ def determine_optimal_period(config):
             period = "1y"   # 1 year for long windows
         else:
             period = "2y"   # 2 years for very long windows
-    
+
     return period
 
 
@@ -162,14 +191,14 @@ def index():
             if df.empty:
                 return None, None, None
 
-            last_price = float(df["Close"].iloc[-1])
+            last_price = float(df["close"].iloc[-1])
 
             # SCAN: kondisi sekarang per ticker
             entry_info = get_entry_sl_tp_row(df, config, t)  # Pass ticker info
             scan_result = None
             backtest_results = None
             summary_result = None
-            
+
             if entry_info:
                 entry_price = entry_info["entry_price"]
                 sl = entry_info["stop_loss"]
@@ -183,7 +212,7 @@ def index():
                 ticker_symbol = t.replace(".JK", "")
                 # Tambahkan * untuk ticker non-syariah
                 display_ticker = ticker_symbol + ("" if ticker_symbol in syariah_tickers else "*")
-                
+
                 scan_result = {
                     "ticker": display_ticker,
                     "price": last_price,
@@ -223,11 +252,11 @@ def index():
                     end_date=today,
                     ticker=t  # Pass ticker info
                 )
-                
+
                 ticker_symbol = t.replace(".JK", "")
                 # Tambahkan * untuk ticker non-syariah
                 display_ticker = ticker_symbol + ("" if ticker_symbol in syariah_tickers else "*")
-                
+
                 backtest_trades = []
                 for tr in trades:
                     backtest_trades.append({
@@ -243,24 +272,31 @@ def index():
                         "stop_loss": tr["stop_loss"],
                         "take_profit": tr["take_profit"],
                     })
-                
+
                 backtest_results = backtest_trades
                 summary_result = summary
-            
+
             return scan_result, backtest_results, summary_result
+        except KeyError as e:
+            print(f"KeyError processing {t}: {e} - Data columns: {list(df.columns) if 'df' in dir() else 'N/A'}")
+            return None, None, None
         except Exception as e:
             print(f"Error processing {t}: {e}")
+            # Don't print full traceback for common yfinance errors
+            if "401" not in str(e) and "Invalid Crumb" not in str(e):
+                import traceback
+                traceback.print_exc()
             return None, None, None
 
     # Use ThreadPoolExecutor for parallel processing
     with ThreadPoolExecutor(max_workers=10) as executor:
         # Submit all tasks
         future_to_ticker = {executor.submit(process_stock, t): t for t in tickers}
-        
+
         # Track progress
         total_tickers = len(tickers)
         completed = 0
-        
+
         # Collect results
         for future in as_completed(future_to_ticker):
             ticker = future_to_ticker[future]
@@ -272,54 +308,16 @@ def index():
                     backtest_trades_all.extend(backtest_results)
                 if summary_result:
                     summary_all.append(summary_result)
-                
+
                 # Update progress
                 completed += 1
                 progress_percent = (completed / total_tickers) * 100
                 print(f"Progress: {completed}/{total_tickers} ({progress_percent:.1f}%)")
             except Exception as e:
                 print(f"Error getting result for {ticker}: {e}")
-            today = df.index[-1].date()
-            if bt_period == "1m":
-                start = today - dt.timedelta(days=30)
-            elif bt_period == "3m":
-                start = today - dt.timedelta(days=90)
-            elif bt_period == "6m":
-                start = today - dt.timedelta(days=180)
-            elif bt_period == "12m":
-                start = today - dt.timedelta(days=365)
-            else:
-                start = today - dt.timedelta(days=365*2)
 
-            trades, summary = json_backtest(
-                df,
-                amount=amount,
-                config=config,
-                start_date=start,
-                end_date=today,
-                ticker=t  # Pass ticker info
-            )
-
-            ticker_symbol = t.replace(".JK", "")
-            # Tambahkan * untuk ticker non-syariah
-            display_ticker = ticker_symbol + ("" if ticker_symbol in syariah_tickers else "*")
-            
-            for tr in trades:
-                backtest_trades_all.append({
-                    "ticker": display_ticker,
-                    "entry_date": tr["entry_date"].strftime("%Y-%m-%d"),
-                    "close_date": tr["close_date"].strftime("%Y-%m-%d"),
-                    "entry_price": tr["entry_price"],
-                    "exit_price": tr["exit_price"],
-                    "pnl": tr["pnl"],
-                    "roi_pct": tr["roi_pct"],
-                    "hold_period": tr["hold_period"],
-                    "exit_reason": tr["exit_reason"],
-                    "stop_loss": tr["stop_loss"],
-                    "take_profit": tr["take_profit"],
-                })
-
-            summary_all.append(summary)
+        # Ensure all threads are properly shut down
+        executor.shutdown(wait=True)
 
     return jsonify({
         "rows": rows_scan,

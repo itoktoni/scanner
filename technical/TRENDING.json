@@ -1,16 +1,16 @@
 {
-    "name": "BEFORE_BREAKOUT",
+    "name": "TRENDING",
     "description": "Cari saham uptrend sehat (MA20>MA50>MA200) yang volume-nya mulai masuk tapi harga belum lari jauh (RSI < 70). Risk moderat.",
     "entry": [
-        "CLOSE > OPEN",
-        "CLOSE > MA20",
-        "MA20 > MA50",
-        "MA50 > MA200",
-        "RSI14 >= 50",
-        "RSI14 <= 70",
-        "VOLUME >= VMA20 * 0.8",
-        "VOLUME <= VMA20 * 1.5",
-        "CLOSE <= VWAP * 1.05"
+        "CLOSE >= MA20",
+        "MA20 >= MA200",
+        "RSI14 >= 30",
+        "RSI14 <= 80",
+        "VOLUME <= VMA20 * 2",
+        "CLOSE <= VWMA * 2",
+        "VOLUME_SPIKE > 1",
+        "STOCH_K >= STOCH_D",
+        "ADX14 >= 30"
     ],
     "tp": [
         "CLOSE + (ATR14 * 2)"
