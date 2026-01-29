@@ -91,6 +91,22 @@
                 </select>
               </div>
 
+              <div class="col-12">
+                <label class="form-label">Timeframe</label>
+                <select name="timeframe" class="form-select">
+                  <option value="5m">5 Minutes</option>
+                  <option value="30m">30 Minutes</option>
+                  <option value="1h">1 Hour</option>
+                  <option value="4h">4 Hours</option>
+                  <option value="6h">6 Hours</option>
+                  <option value="12h">12 Hours</option>
+                  <option value="1d" selected>1 Day</option>
+                  <option value="3d">3 Days</option>
+                  <option value="7d">7 Days</option>
+                  <option value="1m">1 Month</option>
+                </select>
+              </div>
+
               <div class="col-12 d-flex gap-2">
                 <button type="button" id="btn-scan" class="btn btn-primary flex-fill">
                   Scan
@@ -213,8 +229,9 @@
         if (action === "backtest") {
           // MODE BACKTEST: satu baris per trade (dengan SL & TP historis)
           res.backtest_trades.forEach(r => {
+            let cleanTicker = r.ticker.replace(/\*/g, '');
             table.row.add([
-              r.ticker,
+              '<a href="https://stockbit.com/symbol/' + cleanTicker + '/chartbit" target="_blank">' + r.ticker + '</a>',
               r.exit_price !== null ? r.exit_price.toFixed(2) : "",
               r.entry_price !== null ? r.entry_price.toFixed(2) : "",
               r.stop_loss !== null ? r.stop_loss.toFixed(2) : "",
@@ -229,8 +246,9 @@
         } else {
           // MODE SCAN: satu baris per ticker (hanya yang memenuhi strategy sekarang)
           res.rows.forEach(r => {
+            let cleanTicker = r.ticker.replace(/\*/g, '');
             table.row.add([
-              r.ticker,
+              '<a href="https://stockbit.com/symbol/' + cleanTicker + '/chartbit" target="_blank">' + r.ticker + '</a>',
               r.price !== null ? r.price.toFixed(2) : "",
               r.entry_price !== null ? r.entry_price.toFixed(2) : "",
               r.stop_loss !== null ? r.stop_loss.toFixed(2) : "",
@@ -273,8 +291,10 @@
             let avgHold = cntSummary ? (sumHold / cntSummary) : 0;
 
             let amount = $('#scan-form [name=amount]').val();
+            let timeframe = $('#scan-form [name=timeframe]').val();
             let text = "";
             text += "Periode Backtest : (start sekitar " + $('#scan-form [name=bt_period]').val() + " sebelum hari ini)\n";
+            text += "Timeframe        : " + timeframe + "\n";
             text += "Total Equity Awal: Rp " + formatRupiah(amount) + "\n";
             text += "Strategy         : " + $('select[name=strategy] option:selected').text() + "\n";
             text += "------------------------------\n";

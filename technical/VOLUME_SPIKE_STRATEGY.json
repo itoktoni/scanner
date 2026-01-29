@@ -6,7 +6,7 @@
     "VOLUME_SPIKE <= 2",
     "MACD_LINE <= MACD_SIGNAL",
     "PRICE > MA50",
-    "PRICE > MA200"
+    "THREE_RED_CANDLES > 1"
   ],
   "tp": [
     "CLOSE * 1.05"

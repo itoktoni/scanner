@@ -1,0 +1,17 @@
+{
+    "name": "BOW",
+    "description": "Cari saham uptrend sehat (MA20>MA50>MA200) yang volume-nya mulai masuk tapi harga belum lari jauh (RSI < 70). Risk moderat.",
+    "entry": [
+        "CLOSE >= MA20",
+        "VOLUME_SPIKE > 1",
+        "VOLUME_SPIKE > 1",
+        "ADX14 >= 30"
+    ],
+    "tp": [
+        "CLOSE + (ATR14 * 2)"
+    ],
+    "sl": [
+        "CLOSE - (ATR14 * 1.5)"
+    ],
+    "max_hold_days": 5
+}

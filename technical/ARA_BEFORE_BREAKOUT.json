@@ -1,0 +1,25 @@
+{
+    "name": "ARA_BEFORE_BREAKOUT",
+    "description": "Catch ARA sebelum breakout seperti ACRO/BTEN/DATA. Purple accumulation + test MA20 + volume emerging.",
+    "entry": [
+        "VOLUME_SPIKE > 1",
+        "VOLUME_SPIKE < 2.5",
+        "CLOSE >= MA20 * 0.98",
+        "CLOSE <= MA20 * 1.03",
+        "MACD_HISTOGRAM > MACD_HISTOGRAM.shift(3)",
+        "RSI14 >= 45",
+        "RSI14 <= 75",
+        "PRICE_RETURN_7D_PCT >= 1",
+        "PRICE_RETURN_1D_PCT < 5",
+        "HIGH_VOL_DAYS >= 1"
+    ],
+    "tp": [
+        "CLOSE + (ATR14 * 4)",
+        "HH20 * 1.1"
+    ],
+    "sl": [
+        "MA20 * 0.97",
+        "SUPPORT"
+    ],
+    "max_hold_days": 7
+}

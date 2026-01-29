@@ -1,0 +1,25 @@
+{
+    "name": "BULLISH_DIVERGENCE",
+    "description": "Detect bullish divergence pattern where price makes lower lows but indicator makes higher lows, with entry at support level for better risk-reward ratio.",
+    "entry": [
+        "BULLISH_DIVERGENCE == 1",
+        "CLOSE >= SUPPORT",
+        "CLOSE <= SUPPORT * 1.02",
+        "RSI14 >= 30",
+        "RSI14 <= 70",
+        "MACD_HISTOGRAM > MACD_HISTOGRAM.shift(1)",
+        "VOLUME > VMA20 * 0.8",
+        "PRICE_RETURN_1D_PCT < 3",
+        "PRICE_RETURN_1D_PCT > -5"
+    ],
+    "tp": [
+        "CLOSE + (ATR14 * 3)",
+        "RESISTANCE * 0.98"
+    ],
+    "sl": [
+        "SUPPORT * 0.98",
+        "CLOSE - (ATR14 * 1.5)"
+    ],
+    "max_hold_days": 7,
+    "timeframe": "1h"
+}

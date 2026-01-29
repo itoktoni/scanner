@@ -1,0 +1,27 @@
+{
+    "name": "ARA_LANJUTAN_PRO",
+    "description": "ARA Kelanjutan v2.0 - Proven di PSKT (+28%), BELL (+34%). Entry breakout + bid heavy + MACD acceleration.",
+    "entry": [
+        "PRICE_RETURN_1D_PCT >= 12",
+        "VOLUME_SPIKE > 1.8",
+        "MACD_HISTOGRAM > MACD_HISTOGRAM.shift(1)",
+        "CLOSE > HH20 * 0.995",
+        "CLOSE > MA20",
+        "MA20 > MA50",
+        "RSI14 >= 50",
+        "RSI14 <= 82",
+        "ATR14 > ATR14.shift(1) * 1.2",
+        "ADX14 >= 22"
+    ],
+    "tp": [
+        "CLOSE + (ATR14 * 3)",
+        "HH20 * 1.07",
+        "RESISTANCE * 1.03"
+    ],
+    "sl": [
+        "MA20 * 0.98",
+        "SUPPORT",
+        "VWAP"
+    ],
+    "max_hold_days": 5
+}

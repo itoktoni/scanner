@@ -1,0 +1,18 @@
+{
+    "name": "HIDDEN_ACCUMULATION",
+    "description": "Mendeteksi ledakan volume >300% (Bandar Masuk) dengan candle hijau (tidak ada tekanan jual), tren positif (di atas MA20), dan momentum kuat.",
+    "entry": [
+        "VOLUME_SPIKE >= 3.0",
+        "CLOSE > OPEN",
+        "CLOSE > MA20",
+        "RSI14 < 75",
+        "ADX14 >= 20"
+    ],
+    "tp": [
+        "CLOSE + (ATR14 * 3)"
+    ],
+    "sl": [
+        "CLOSE - (ATR14 * 1.5)"
+    ],
+    "max_hold_days": 5
+}

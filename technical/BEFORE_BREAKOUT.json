@@ -6,6 +6,7 @@
         "CLOSE > MA20",
         "MA20 > MA50",
         "MA50 > MA200",
+        "VOLUME_SPIKE > 1",
         "RSI14 >= 50",
         "RSI14 <= 70",
         "VOLUME >= VMA20 * 0.8",

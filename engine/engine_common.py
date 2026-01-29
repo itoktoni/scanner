@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 
-def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.DataFrame:
+def add_common_indicators(df: pd.DataFrame, required_indicators=None, timeframe="1h") -> pd.DataFrame:
     """
     Menambahkan indikator teknikal umum ke dalam DataFrame untuk scanning/backtest.
 
@@ -72,7 +72,7 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
     - FIB_382         : Level Retracement Fibonacci 38.2% dari range High-Low 50 hari terakhir.
     - FIB_50          : Level Retracement Fibonacci 50.0% dari range High-Low 50 hari terakhir.
     - FIB_618         : Level Retracement Fibonacci 61.8% dari range High-Low 50 hari terakhir.
-    - THREE_RED_CANDLES : Numeric indicator (1/0) untuk 3 candle merah berturut-turut (bearish pattern). 1 = pola ditemukan, 0 = tidak ditemukan.
+    - THREE_RED_CANDLES : Numeric indicator (1/0) untuk candle merah 3 hari yang lalu. 1 = candle merah, 0 = candle hijau.
     - THREE_GREEN_CANDLES : Numeric indicator (1/0) untuk 3 candle hijau berturut-turut (bullish pattern). 1 = pola ditemukan, 0 = tidak ditemukan.
     - DOJI : Numeric indicator (1/0) untuk pola Doji (open ≈ close). 1 = pola ditemukan, 0 = tidak ditemukan.
     - HAMMER : Numeric indicator (1/0) untuk pola Hammer (bullish reversal). 1 = pola ditemukan, 0 = tidak ditemukan.
@@ -83,12 +83,47 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
     - ADX14           : Average Directional Index (14). Indikator kekuatan tren, > 25 menunjukkan tren kuat.
     - ADX_PLUS        : Positive Directional Indicator (+DI14). Mengukur kekuatan tren naik.
     - ADX_MINUS       : Negative Directional Indicator (-DI14). Mengukur kekuatan tren turun.
+
+    --- Bullish Chart Patterns ---
+    - BULLISH_ENGULFING : Bullish Engulfing Pattern (1 = found, 0 = not found).
+    - PIERCING_LINE : Piercing Line Pattern (1 = found, 0 = not found).
+    - INVERSE_HAMMER : Inverse Hammer Pattern (1 = found, 0 = not found).
+    - BULLISH_HARAMI : Bullish Harami Pattern (1 = found, 0 = not found).
+    - TWEZER_BOTTOM : Tweezer Bottom Pattern (1 = found, 0 = not found).
+    - THREE_WHITE_SOLDIERS : Three White Soldiers Pattern (1 = found, 0 = not found).
+    - RISING_THREE_METHODS : Rising Three Methods Pattern (1 = found, 0 = not found).
+    - BULLISH_ABANDONED_BABY : Bullish Abandoned Baby Pattern (1 = found, 0 = not found).
+    - BULLISH_KICKER : Bullish Kicker Pattern (1 = found, 0 = not found).
+    - BULLISH_MARUBOZU : Bullish Marubozu Pattern (1 = found, 0 = not found).
+
+    --- Divergence Patterns ---
+    - BULLISH_DIVERGENCE : Bullish divergence pattern (1 = found, 0 = not found).
+    - BEARISH_DIVERGENCE : Bearish divergence pattern (1 = found, 0 = not found).
     """
 
     # 1. Copy data agar aman
     df = df.copy()
     if df.empty:
         return df
+
+    # Timeframe-based parameter adjustments
+    def get_timeframe_multiplier(timeframe):
+        """Get multiplier for indicator periods based on timeframe"""
+        timeframe_map = {
+            "5m": 0.25,    # 5 minutes = 1/4 hour
+            "30m": 1.5,    # 30 minutes = 1.5x 15min, but we'll use 1.5x multiplier
+            "1h": 1.0,     # 1 hour = base
+            "4h": 4.0,     # 4 hours
+            "6h": 6.0,     # 6 hours
+            "12h": 12.0,   # 12 hours
+            "1d": 24.0,    # 1 day = 24 hours
+            "3d": 72.0,    # 3 days
+            "7d": 168.0,   # 7 days
+            "1m": 720.0    # 1 month ≈ 30 days
+        }
+        return timeframe_map.get(timeframe, 1.0)  # Default to 1.0 if timeframe not found
+
+    timeframe_multiplier = get_timeframe_multiplier(timeframe)
 
     # 2. Handle MultiIndex columns if present (from yfinance)
     if isinstance(df.columns, pd.MultiIndex):
@@ -146,9 +181,12 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
     # 4. Previous Price & Returns (always calculate basic returns)
     df["PREVIOUS_PRICE"] = close.shift(1)
 
-    periods = [1, 7, 30, 50, 100]
-    for p in periods:
-        df[f"PRICE_RETURN_{p}D_PCT"] = close.pct_change(p) * 100
+    # Adjust periods based on timeframe
+    base_periods = [1, 7, 30, 50, 100]
+    adjusted_periods = [int(p * timeframe_multiplier) for p in base_periods]
+    for i, p in enumerate(adjusted_periods):
+        original_p = base_periods[i]
+        df[f"PRICE_RETURN_{original_p}D_PCT"] = close.pct_change(p, fill_method=None) * 100
 
     # 5. Frequency Spike (Karakter Saham)
     if need_indicator("PERCENT_SPIKE"):
@@ -195,27 +233,35 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
         ma_windows = [5, 10, 20, 50, 100, 200]
         vma_windows = [5, 10, 20]
 
-    for w in ma_windows:
-        if need_indicator(f"MA{w}"):
-            df[f"MA{w}"] = close.rolling(w).mean()
+    # Adjust MA/VMA windows based on timeframe
+    adjusted_ma_windows = [int(w * timeframe_multiplier) for w in ma_windows]
+    adjusted_vma_windows = [int(w * timeframe_multiplier) for w in vma_windows]
 
-    for w in vma_windows:
+    for i, w in enumerate(ma_windows):
+        if need_indicator(f"MA{w}"):
+            adjusted_w = adjusted_ma_windows[i]
+            df[f"MA{w}"] = close.rolling(adjusted_w).mean()
+
+    for i, w in enumerate(vma_windows):
         if need_indicator(f"VMA{w}"):
-            df[f"VMA{w}"] = volume.rolling(w).mean()
+            adjusted_w = adjusted_vma_windows[i]
+            df[f"VMA{w}"] = volume.rolling(adjusted_w).mean()
 
     # 7. Volatility (ATR & Bollinger Bands)
     if need_indicator("ATR") or need_indicator("BB") or need_indicator("SUPPORT") or need_indicator("RESISTANCE"):
-        # ATR 14
+        # ATR with timeframe adjustment
+        atr_period = int(14 * timeframe_multiplier)
         tr1 = (high - low).abs()
         tr2 = (high - close.shift(1)).abs()
         tr3 = (low - close.shift(1)).abs()
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        df["ATR14"] = tr.rolling(14).mean()
+        df["ATR14"] = tr.rolling(atr_period).mean()
 
     if need_indicator("BB"):
-        # Bollinger Bands (20, 2)
-        bb_mid = close.rolling(20).mean()
-        bb_std = close.rolling(20).std()
+        # Bollinger Bands with timeframe adjustment
+        bb_period = int(20 * timeframe_multiplier)
+        bb_mid = close.rolling(bb_period).mean()
+        bb_std = close.rolling(bb_period).std()
         df["BB_MIDDLE"] = bb_mid
         df["BB_UPPER"] = bb_mid + (bb_std * 2)
         df["BB_LOWER"] = bb_mid - (bb_std * 2)
@@ -225,12 +271,13 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
 
     # 8. Momentum (RSI, MACD, Stochastic)
     if need_indicator("RSI"):
-        # RSI 14
+        # RSI with timeframe adjustment
+        rsi_period = int(14 * timeframe_multiplier)
         delta = close.diff()
         gain = delta.clip(lower=0)
         loss = -delta.clip(upper=0)
-        avg_gain = gain.rolling(14).mean()
-        avg_loss = loss.rolling(14).mean()
+        avg_gain = gain.rolling(rsi_period).mean()
+        avg_loss = loss.rolling(rsi_period).mean()
         rs = avg_gain / avg_loss.replace(0, np.nan)
         df["RSI14"] = 100 - (100 / (1 + rs))
 
@@ -243,12 +290,14 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
         df["MACD_HISTOGRAM"] = df["MACD_LINE"] - df["MACD_SIGNAL"]
 
     if need_indicator("STOCH"):
-        # Stochastic (14, 3)
-        low14 = low.rolling(14).min()
-        high14 = high.rolling(14).max()
-        stoch_k = 100 * ((close - low14) / (high14 - low14).replace(0, np.nan))
+        # Stochastic with timeframe adjustment
+        stoch_k_period = int(14 * timeframe_multiplier)
+        stoch_d_period = max(3, int(3 * timeframe_multiplier))  # Ensure at least 3
+        low_period = low.rolling(stoch_k_period).min()
+        high_period = high.rolling(stoch_k_period).max()
+        stoch_k = 100 * ((close - low_period) / (high_period - low_period).replace(0, np.nan))
         df["STOCH_K"] = stoch_k
-        df["STOCH_D"] = stoch_k.rolling(3).mean()
+        df["STOCH_D"] = stoch_k.rolling(stoch_d_period).mean()
 
     # 9. Support / Resistance & High/Low Rolling
     support_resistance_windows = []
@@ -264,11 +313,16 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
     else:
         support_resistance_windows = [3, 20]
 
-    for w in support_resistance_windows:
+    # Adjust support/resistance windows based on timeframe
+    adjusted_sr_windows = [int(w * timeframe_multiplier) for w in support_resistance_windows]
+
+    for i, w in enumerate(support_resistance_windows):
         if need_indicator(f"HH{w}"):
-            df[f"HH{w}"] = high.rolling(w).max()
+            adjusted_w = adjusted_sr_windows[i]
+            df[f"HH{w}"] = high.rolling(adjusted_w).max()
         if need_indicator(f"LL{w}"):
-            df[f"LL{w}"] = low.rolling(w).min()
+            adjusted_w = adjusted_sr_windows[i]
+            df[f"LL{w}"] = low.rolling(adjusted_w).min()
 
     # Fibonacci Retracement (50 Days Range)
     if need_indicator("FIB"):
@@ -300,24 +354,42 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
     if need_indicator("VWAP") or need_indicator("VWMA"):
         # Typical Price
         tp = (high + low + close) / 3
-        # VWMA (Rolling 20) -> Valid untuk chart Daily
-        vp_sum = (tp * volume).rolling(20).sum()
-        v_sum = volume.rolling(20).sum()
+        # VWMA with timeframe adjustment
+        vwma_period = int(20 * timeframe_multiplier)
+        vp_sum = (tp * volume).rolling(vwma_period).sum()
+        v_sum = volume.rolling(vwma_period).sum()
         df["VWMA"] = vp_sum / v_sum.replace(0, np.nan)
 
         # VWAP Proxy (disamakan dengan VWMA agar tidak misleading di chart daily)
         df["VWAP"] = df["VWMA"]
 
     # 10. Candlestick Patterns
+        # ... (kode sebelumnya)
+
+    # 10. Candlestick Patterns
     if need_indicator("THREE_RED_CANDLES"):
-        # Three Red Candles Pattern (Bearish)
-        # Membuat numeric indicator untuk 3 candle merah berturut-turut (1 = pattern ditemukan, 0 = tidak ditemukan)
-        # Candle merah = Close < Open
-        is_red_candle = df["CLOSE"] < df["OPEN"]
-        # Memeriksa apakah 3 candle berturut-turut merah
-        three_red_condition = is_red_candle & is_red_candle.shift(1) & is_red_candle.shift(2)
-        # Konversi boolean ke integer (1 untuk True, 0 untuk False)
-        df["THREE_RED_CANDLES"] = three_red_condition.astype(int)
+        # UPDATE: Three Red Candles / Three Black Crows Pattern (Bearish)
+        # Mendeteksi 3 candle merah berturut-turut dengan Low yang semakin rendah (Lower Low)
+
+        # 1. Cek Candle Merah (Close < Open)
+        is_red = df["CLOSE"] < df["OPEN"]
+
+        # 2. Cek apakah 3 hari terakhir berturut-turut merah
+        three_consecutive_red = is_red & is_red.shift(1) & is_red.shift(2)
+
+        # 3. Cek Lower Low (Low hari ini < Low kemarin < Low 2 hari lalu)
+        # Ini memastikan tren benar-benar sedang "turun ke bawah"
+        descending_lows = (df["LOW"] < df["LOW"].shift(1)) & \
+                          (df["LOW"].shift(1) < df["LOW"].shift(2))
+
+        # Gabungkan kedua kondisi
+        pattern_confirmed = three_consecutive_red & descending_lows
+
+        # Convert ke integer (1 = Pola ditemukan hari ini, 0 = Tidak)
+        df["THREE_RED_CANDLES"] = pattern_confirmed.fillna(False).astype(int)
+
+    # ... (lanjut ke THREE_GREEN_CANDLES)
+
 
     if need_indicator("THREE_GREEN_CANDLES"):
         # Three Green Candles Pattern (Bullish)
@@ -404,73 +476,283 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
         evening_star_condition_corrected = first_candle_green & second_candle_small & (df["CLOSE"] < df["OPEN"])
         df["EVENING_STAR"] = evening_star_condition_corrected.astype(int)
 
-    # 11. ADX (Average Directional Index)
+    # 11. Bullish Chart Patterns (10 Best Bullish Patterns)
+    if need_indicator("BULLISH_ENGULFING"):
+        # Bullish Engulfing Pattern: Small red candle followed by large green candle that "engulfs" it
+        prev_candle_bearish = df["CLOSE"].shift(1) < df["OPEN"].shift(1)
+        current_candle_bullish = df["CLOSE"] > df["OPEN"]
+        engulfing_condition = (df["CLOSE"] > df["OPEN"].shift(1)) & (df["OPEN"] < df["CLOSE"].shift(1))
+        df["BULLISH_ENGULFING"] = (prev_candle_bearish & current_candle_bullish & engulfing_condition).astype(int)
+
+    if need_indicator("PIERCING_LINE"):
+        # Piercing Line Pattern: Bearish candle followed by bullish candle that closes more than halfway up the bearish candle
+        prev_candle_bearish = df["CLOSE"].shift(1) < df["OPEN"].shift(1)
+        current_candle_bullish = df["CLOSE"] > df["OPEN"]
+        # Current close should be above midpoint of previous candle
+        prev_candle_midpoint = (df["OPEN"].shift(1) + df["CLOSE"].shift(1)) / 2
+        piercing_condition = df["CLOSE"] > prev_candle_midpoint
+        df["PIERCING_LINE"] = (prev_candle_bearish & current_candle_bullish & piercing_condition).astype(int)
+
+    if need_indicator("INVERSE_HAMMER"):
+        # Inverse Hammer Pattern: Small body at bottom, long upper shadow, little/no lower shadow
+        body_size = (df["CLOSE"] - df["OPEN"]).abs()
+        upper_shadow = df["HIGH"] - df[["CLOSE", "OPEN"]].max(axis=1)
+        lower_shadow = df[["CLOSE", "OPEN"]].min(axis=1) - df["LOW"]
+        total_range = df["HIGH"] - df["LOW"]
+
+        # Inverse Hammer conditions:
+        # 1. Upper shadow >= 2x body size
+        # 2. Lower shadow <= 0.5x body size
+        # 3. Body kecil (< 20% dari range total)
+        # 4. Occurs after downtrend (close below recent average)
+        inverse_hammer_condition = (
+            (upper_shadow >= body_size * 2) &
+            (lower_shadow <= body_size * 0.5) &
+            (body_size < total_range * 0.2) &
+            (df["CLOSE"] < df["CLOSE"].rolling(5).mean())
+        )
+        df["INVERSE_HAMMER"] = inverse_hammer_condition.astype(int)
+
+    if need_indicator("BULLISH_HARAMI"):
+        # Bullish Harami Pattern: Large bearish candle followed by small candle within the bearish candle's body
+        prev_candle_bearish = df["CLOSE"].shift(1) < df["OPEN"].shift(1)
+        prev_candle_large = (df["OPEN"].shift(1) - df["CLOSE"].shift(1)) > (df["HIGH"].shift(1) - df["LOW"].shift(1)) * 0.6
+        current_candle_small = (df["HIGH"] - df["LOW"]) < (df["OPEN"].shift(1) - df["CLOSE"].shift(1)) * 0.5
+        within_prev_body = (df["OPEN"] > df["CLOSE"].shift(1)) & (df["CLOSE"] < df["OPEN"].shift(1))
+        df["BULLISH_HARAMI"] = (prev_candle_bearish & prev_candle_large & current_candle_small & within_prev_body).astype(int)
+
+    if need_indicator("TWEZER_BOTTOM"):
+        # Tweezer Bottom Pattern: Two candles with same low, first bearish, second bullish
+        same_low = df["LOW"] == df["LOW"].shift(1)
+        prev_candle_bearish = df["CLOSE"].shift(1) < df["OPEN"].shift(1)
+        current_candle_bullish = df["CLOSE"] > df["OPEN"]
+        df["TWEZER_BOTTOM"] = (same_low & prev_candle_bearish & current_candle_bullish).astype(int)
+
+    if need_indicator("THREE_WHITE_SOLDIERS"):
+        # Three White Soldiers Pattern: Three consecutive long bullish candles with higher closes
+        candle1_bullish = df["CLOSE"].shift(2) > df["OPEN"].shift(2)
+        candle2_bullish = df["CLOSE"].shift(1) > df["OPEN"].shift(1)
+        candle3_bullish = df["CLOSE"] > df["OPEN"]
+        higher_closes = (df["CLOSE"] > df["CLOSE"].shift(1)) & (df["CLOSE"].shift(1) > df["CLOSE"].shift(2))
+        large_bodies = (
+            ((df["CLOSE"] - df["OPEN"]) > (df["HIGH"] - df["LOW"]) * 0.6) &
+            ((df["CLOSE"].shift(1) - df["OPEN"].shift(1)) > (df["HIGH"].shift(1) - df["LOW"].shift(1)) * 0.6) &
+            ((df["CLOSE"].shift(2) - df["OPEN"].shift(2)) > (df["HIGH"].shift(2) - df["LOW"].shift(2)) * 0.6)
+        )
+        df["THREE_WHITE_SOLDIERS"] = (candle1_bullish & candle2_bullish & candle3_bullish & higher_closes & large_bodies).astype(int)
+
+    if need_indicator("RISING_THREE_METHODS"):
+        # Rising Three Methods Pattern: Long bullish candle, three small bearish candles, then another long bullish candle
+        candle1_bullish = df["CLOSE"].shift(4) > df["OPEN"].shift(4)
+        candle1_large = (df["CLOSE"].shift(4) - df["OPEN"].shift(4)) > (df["HIGH"].shift(4) - df["LOW"].shift(4)) * 0.7
+        candle5_bullish = df["CLOSE"] > df["OPEN"]
+        candle5_large = (df["CLOSE"] - df["OPEN"]) > (df["HIGH"] - df["LOW"]) * 0.7
+        middle_candles_small = (
+            ((df["HIGH"].shift(3) - df["LOW"].shift(3)) < (df["CLOSE"].shift(4) - df["OPEN"].shift(4)) * 0.5) &
+            ((df["HIGH"].shift(2) - df["LOW"].shift(2)) < (df["CLOSE"].shift(4) - df["OPEN"].shift(4)) * 0.5) &
+            ((df["HIGH"].shift(1) - df["LOW"].shift(1)) < (df["CLOSE"].shift(4) - df["OPEN"].shift(4)) * 0.5)
+        )
+        within_range = (
+            (df["CLOSE"] > df["OPEN"].shift(4)) &
+            (df["OPEN"].shift(3) < df["CLOSE"].shift(4)) &
+            (df["CLOSE"].shift(3) > df["OPEN"].shift(4))
+        )
+        df["RISING_THREE_METHODS"] = (candle1_bullish & candle1_large & candle5_bullish & candle5_large & middle_candles_small & within_range).astype(int)
+
+    if need_indicator("BULLISH_ABANDONED_BABY"):
+        # Bullish Abandoned Baby Pattern: Bearish candle, doji gapping down, then bullish candle gapping up
+        candle1_bearish = df["CLOSE"].shift(2) < df["OPEN"].shift(2)
+        candle3_bullish = df["CLOSE"] > df["OPEN"]
+        # Middle candle should be a doji
+        middle_body_small = (df["CLOSE"].shift(1) - df["OPEN"].shift(1)).abs() < (df["HIGH"].shift(1) - df["LOW"].shift(1)) * 0.1
+        # Gaps: candle2 opens below candle1 close, candle3 opens above candle2 close
+        gap_down = df["OPEN"].shift(1) < df["CLOSE"].shift(2)
+        gap_up = df["OPEN"] > df["CLOSE"].shift(1)
+        df["BULLISH_ABANDONED_BABY"] = (candle1_bearish & candle3_bullish & middle_body_small & gap_down & gap_up).astype(int)
+
+    if need_indicator("BULLISH_KICKER"):
+        # Bullish Kicker Pattern: Bearish candle followed by bullish candle with gap up
+        candle1_bearish = df["CLOSE"].shift(1) < df["OPEN"].shift(1)
+        candle2_bullish = df["CLOSE"] > df["OPEN"]
+        gap_up = df["OPEN"] > df["CLOSE"].shift(1)
+        large_moves = (
+            ((df["OPEN"].shift(1) - df["CLOSE"].shift(1)) > (df["HIGH"].shift(1) - df["LOW"].shift(1)) * 0.5) &
+            ((df["CLOSE"] - df["OPEN"]) > (df["HIGH"] - df["LOW"]) * 0.5)
+        )
+        df["BULLISH_KICKER"] = (candle1_bearish & candle2_bullish & gap_up & large_moves).astype(int)
+
+    if need_indicator("BULLISH_MARUBOZU"):
+        # Bullish Marubozu Pattern: Long bullish candle with little or no shadows
+        body_size = df["CLOSE"] - df["OPEN"]
+        upper_shadow = df["HIGH"] - df["CLOSE"]
+        lower_shadow = df["OPEN"] - df["LOW"]
+        total_range = df["HIGH"] - df["LOW"]
+
+        # Marubozu conditions:
+        # 1. Large body (> 80% of total range)
+        # 2. Very small or no shadows (< 5% of body size)
+        # 3. Bullish (close > open)
+        marubozu_condition = (
+            (body_size > total_range * 0.8) &
+            (upper_shadow < body_size * 0.05) &
+            (lower_shadow < body_size * 0.05) &
+            (df["CLOSE"] > df["OPEN"])
+        )
+        df["BULLISH_MARUBOZU"] = marubozu_condition.astype(int)
+
+    # 11. Divergence Patterns (Bullish & Bearish)
+    if need_indicator("BULLISH_DIVERGENCE") or need_indicator("BEARISH_DIVERGENCE"):
+        # Ensure RSI14 is calculated first
+        if "RSI14" not in df.columns:
+            # Calculate RSI14 if not already present
+            delta = close.diff()
+            gain = delta.clip(lower=0)
+            loss = -delta.clip(upper=0)
+            avg_gain = gain.rolling(14).mean()
+            avg_loss = loss.rolling(14).mean()
+            rs = avg_gain / avg_loss.replace(0, np.nan)
+            df["RSI14"] = 100 - (100 / (1 + rs))
+
+        # Helper function to detect higher highs and lower lows
+        def get_higher_highs(series, window=5):
+            """Detect higher highs in a series"""
+            return series > series.rolling(window).max().shift(1)
+
+        def get_lower_lows(series, window=5):
+            """Detect lower lows in a series"""
+            return series < series.rolling(window).min().shift(1)
+
+        def get_higher_lows(series, window=5):
+            """Detect higher lows in a series"""
+            return series > series.rolling(window).min().shift(1)
+
+        def get_lower_highs(series, window=5):
+            """Detect lower highs in a series"""
+            return series < series.rolling(window).max().shift(1)
+
+        # Bullish Divergence: Price makes lower lows while RSI makes higher lows
+        if need_indicator("BULLISH_DIVERGENCE"):
+            # Use timeframe-adjusted window for divergence detection
+            divergence_window = max(3, int(5 * timeframe_multiplier))
+            lookback_window = max(10, int(10 * timeframe_multiplier))
+
+            # Enhanced bullish divergence detection
+            # 1. Price is making lower lows (downtrend)
+            price_lower_lows = get_lower_lows(low, divergence_window)
+
+            # 2. RSI is making higher lows (potential reversal signal)
+            rsi_higher_lows = get_higher_lows(df["RSI14"], divergence_window)
+
+            # 3. Additional confirmation: RSI is in oversold territory or coming from oversold
+            rsi_oversold_condition = (df["RSI14"] < 50) & (df["RSI14"].shift(1) < 50)
+
+            # 4. Price is below recent average (confirming downtrend)
+            price_below_ma = close < close.rolling(lookback_window).mean()
+
+            # Combine conditions for more robust detection
+            bullish_divergence = price_lower_lows & rsi_higher_lows & rsi_oversold_condition & price_below_ma
+            df["BULLISH_DIVERGENCE"] = bullish_divergence.astype(int)
+
+        # Bearish Divergence: Price makes higher highs while RSI makes lower highs
+        if need_indicator("BEARISH_DIVERGENCE"):
+            # Use timeframe-adjusted window for divergence detection
+            divergence_window = max(3, int(5 * timeframe_multiplier))
+            lookback_window = max(10, int(10 * timeframe_multiplier))
+
+            # Enhanced bearish divergence detection
+            # 1. Price is making higher highs (uptrend)
+            price_higher_highs = get_higher_highs(high, divergence_window)
+
+            # 2. RSI is making lower highs (potential reversal signal)
+            rsi_lower_highs = get_lower_highs(df["RSI14"], divergence_window)
+
+            # 3. Additional confirmation: RSI is in overbought territory or coming from overbought
+            rsi_overbought_condition = (df["RSI14"] > 50) & (df["RSI14"].shift(1) > 50)
+
+            # 4. Price is above recent average (confirming uptrend)
+            price_above_ma = close > close.rolling(lookback_window).mean()
+
+            # Combine conditions for more robust detection
+            bearish_divergence = price_higher_highs & rsi_lower_highs & rsi_overbought_condition & price_above_ma
+            df["BEARISH_DIVERGENCE"] = bearish_divergence.astype(int)
+
+    # 12. ADX (Average Directional Index)
     if need_indicator("ADX"):
-        # Calculate True Range (TR)
-        tr1 = high - low
-        tr2 = np.abs(high - close.shift(1))
-        tr3 = np.abs(low - close.shift(1))
-        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        # Check if we have enough data for ADX calculation with timeframe adjustment
+        adx_period = int(14 * timeframe_multiplier)
+        min_data_required = adx_period * 2  # Need at least 2x periods for ADX
+        if len(df) < min_data_required:
+            df["ADX14"] = 0.0
+            df["ADX_PLUS"] = 0.0
+            df["ADX_MINUS"] = 0.0
+        else:
+            # Calculate True Range (TR)
+            tr1 = high - low
+            tr2 = np.abs(high - close.shift(1))
+            tr3 = np.abs(low - close.shift(1))
+            true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-        # Calculate Directional Movement (+DM and -DM)
-        up_move = high - high.shift(1)
-        down_move = low.shift(1) - low
+            # Calculate Directional Movement (+DM and -DM)
+            up_move = high - high.shift(1)
+            down_move = low.shift(1) - low
 
-        # Positive Directional Movement (+DM)
-        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
-        plus_dm = pd.Series(plus_dm, index=high.index)
+            # Positive Directional Movement (+DM)
+            plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+            plus_dm = pd.Series(plus_dm, index=high.index)
 
-        # Negative Directional Movement (-DM)
-        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
-        minus_dm = pd.Series(minus_dm, index=high.index)
+            # Negative Directional Movement (-DM)
+            minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+            minus_dm = pd.Series(minus_dm, index=high.index)
 
-        # Smoothed True Range and Directional Movements (Wilder's Method)
-        atr_period = 14
-        smoothed_tr = pd.Series(index=true_range.index, dtype=float)
-        smoothed_plus_dm = pd.Series(index=plus_dm.index, dtype=float)
-        smoothed_minus_dm = pd.Series(index=minus_dm.index, dtype=float)
+            # Smoothed True Range and Directional Movements (Wilder's Method)
+            atr_period = adx_period
+            smoothed_tr = pd.Series(index=true_range.index, dtype=float)
+            smoothed_plus_dm = pd.Series(index=plus_dm.index, dtype=float)
+            smoothed_minus_dm = pd.Series(index=minus_dm.index, dtype=float)
 
-        # Initialize first values
-        smoothed_tr.iloc[atr_period-1] = true_range[:atr_period].sum()
-        smoothed_plus_dm.iloc[atr_period-1] = plus_dm[:atr_period].sum()
-        smoothed_minus_dm.iloc[atr_period-1] = minus_dm[:atr_period].sum()
+            # Initialize first values
+            smoothed_tr.iloc[atr_period-1] = true_range[:atr_period].sum()
+            smoothed_plus_dm.iloc[atr_period-1] = plus_dm[:atr_period].sum()
+            smoothed_minus_dm.iloc[atr_period-1] = minus_dm[:atr_period].sum()
 
-        # Calculate remaining values using Wilder's smoothing method
-        for i in range(atr_period, len(true_range)):
-            smoothed_tr.iloc[i] = smoothed_tr.iloc[i-1] - (smoothed_tr.iloc[i-1] / atr_period) + true_range.iloc[i]
-            smoothed_plus_dm.iloc[i] = smoothed_plus_dm.iloc[i-1] - (smoothed_plus_dm.iloc[i-1] / atr_period) + plus_dm.iloc[i]
-            smoothed_minus_dm.iloc[i] = smoothed_minus_dm.iloc[i-1] - (smoothed_minus_dm.iloc[i-1] / atr_period) + minus_dm.iloc[i]
+            # Calculate remaining values using Wilder's smoothing method
+            for i in range(atr_period, len(true_range)):
+                smoothed_tr.iloc[i] = smoothed_tr.iloc[i-1] - (smoothed_tr.iloc[i-1] / atr_period) + true_range.iloc[i]
+                smoothed_plus_dm.iloc[i] = smoothed_plus_dm.iloc[i-1] - (smoothed_plus_dm.iloc[i-1] / atr_period) + plus_dm.iloc[i]
+                smoothed_minus_dm.iloc[i] = smoothed_minus_dm.iloc[i-1] - (smoothed_minus_dm.iloc[i-1] / atr_period) + minus_dm.iloc[i]
 
-        # Calculate Directional Indicators
-        plus_di = (smoothed_plus_dm / smoothed_tr) * 100
-        minus_di = (smoothed_minus_dm / smoothed_tr) * 100
+            # Calculate Directional Indicators
+            plus_di = (smoothed_plus_dm / smoothed_tr) * 100
+            minus_di = (smoothed_minus_dm / smoothed_tr) * 100
 
-        # Calculate Directional Movement Index (DX)
-        dx_divisor = (np.abs(plus_di) + np.abs(minus_di)).replace(0, np.nan)
-        dx = (np.abs(plus_di - minus_di) / dx_divisor) * 100
+            # Calculate Directional Movement Index (DX)
+            dx_divisor = (np.abs(plus_di) + np.abs(minus_di)).replace(0, np.nan)
+            dx = (np.abs(plus_di - minus_di) / dx_divisor) * 100
 
-        # Calculate ADX (Average Directional Index)
-        adx = pd.Series(index=dx.index, dtype=float)
-        adx.iloc[atr_period*2-1] = dx[atr_period:atr_period*2].mean()  # Initial ADX
+            # Calculate ADX (Average Directional Index)
+            adx = pd.Series(index=dx.index, dtype=float)
+            adx.iloc[atr_period*2-1] = dx[atr_period:atr_period*2].mean()  # Initial ADX
 
-        # Smoothed ADX calculation (Wilder's method)
-        for i in range(atr_period*2, len(dx)):
-            adx.iloc[i] = ((adx.iloc[i-1] * (atr_period - 1)) + dx.iloc[i]) / atr_period
+            # Smoothed ADX calculation (Wilder's method)
+            for i in range(adx_period*2, len(dx)):
+                adx.iloc[i] = ((adx.iloc[i-1] * (adx_period - 1)) + dx.iloc[i]) / adx_period
 
-        # Assign to DataFrame
-        df["ADX14"] = adx
-        df["ADX_PLUS"] = plus_di
-        df["ADX_MINUS"] = minus_di
+            # Assign to DataFrame
+            df["ADX14"] = adx
+            df["ADX_PLUS"] = plus_di
+            df["ADX_MINUS"] = minus_di
 
     # 12. Frekuensi Perdagangan (Trading Frequency)
     if need_indicator("TRADE_FREQUENCY") or need_indicator("HIGH_VOL_DAYS"):
         # Mengukur seberapa sering saham diperdagangkan berdasarkan volume
-        avg_volume = volume.rolling(20).mean()
+        tf_period = int(20 * timeframe_multiplier)
+        avg_volume = volume.rolling(tf_period).mean()
         # TRADE_FREQUENCY: Rasio volume saat ini terhadap rata-rata volume (dalam %)
         df["TRADE_FREQUENCY"] = (volume / avg_volume.replace(0, np.nan)) * 100
         # HIGH_VOL_DAYS: Hari dengan volume tinggi (>150% dari rata-rata 20 hari)
         high_vol_mask = volume > (avg_volume * 1.5)
-        df["HIGH_VOL_DAYS"] = high_vol_mask.rolling(30).sum()
+        high_vol_period = int(30 * timeframe_multiplier)
+        df["HIGH_VOL_DAYS"] = high_vol_mask.rolling(high_vol_period).sum()
 
     # 13. Final Cleanup (Isi NaN dengan 0 agar engine eval aman)
     # Fill Forward dulu (untuk data yg bolong dikit), lalu Fill 0 (untuk awal data)

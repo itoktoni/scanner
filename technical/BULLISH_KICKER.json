@@ -1,0 +1,23 @@
+{
+    "name": "BULLISH_KICKER",
+    "description": "Bullish Kicker Pattern strategy: Detects when a bearish candle is followed by a bullish candle with a gap up, indicating sudden shift in market sentiment from bearish to bullish.",
+    "entry": [
+        "BULLISH_KICKER == 1",
+        "CLOSE > MA20",
+        "MA20 > MA50",
+        "RSI14 >= 30",
+        "RSI14 <= 70",
+        "VOLUME > VMA20 * 0.8",
+        "MACD_LINE > MACD_SIGNAL",
+        "PRICE_RETURN_1D_PCT > -5",
+        "PRICE_RETURN_1D_PCT < 3"
+    ],
+    "tp": [
+        "CLOSE * 1.05"
+    ],
+    "sl": [
+        "CLOSE * 0.95"
+    ],
+    "max_hold_days": 5,
+    "timeframe": "1h"
+}
