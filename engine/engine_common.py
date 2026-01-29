@@ -406,61 +406,67 @@ def add_common_indicators(df: pd.DataFrame, required_indicators=None) -> pd.Data
 
     # 11. ADX (Average Directional Index)
     if need_indicator("ADX"):
-        # Calculate True Range (TR)
-        tr1 = high - low
-        tr2 = np.abs(high - close.shift(1))
-        tr3 = np.abs(low - close.shift(1))
-        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
-        # Calculate Directional Movement (+DM and -DM)
-        up_move = high - high.shift(1)
-        down_move = low.shift(1) - low
-
-        # Positive Directional Movement (+DM)
-        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
-        plus_dm = pd.Series(plus_dm, index=high.index)
-
-        # Negative Directional Movement (-DM)
-        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
-        minus_dm = pd.Series(minus_dm, index=high.index)
-
-        # Smoothed True Range and Directional Movements (Wilder's Method)
         atr_period = 14
-        smoothed_tr = pd.Series(index=true_range.index, dtype=float)
-        smoothed_plus_dm = pd.Series(index=plus_dm.index, dtype=float)
-        smoothed_minus_dm = pd.Series(index=minus_dm.index, dtype=float)
+        if len(df) < atr_period * 2:
+            # Not enough data for ADX calculation (requires at least 28 periods)
+            df["ADX14"] = np.nan
+            df["ADX_PLUS"] = np.nan
+            df["ADX_MINUS"] = np.nan
+        else:
+            # Calculate True Range (TR)
+            tr1 = high - low
+            tr2 = np.abs(high - close.shift(1))
+            tr3 = np.abs(low - close.shift(1))
+            true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-        # Initialize first values
-        smoothed_tr.iloc[atr_period-1] = true_range[:atr_period].sum()
-        smoothed_plus_dm.iloc[atr_period-1] = plus_dm[:atr_period].sum()
-        smoothed_minus_dm.iloc[atr_period-1] = minus_dm[:atr_period].sum()
+            # Calculate Directional Movement (+DM and -DM)
+            up_move = high - high.shift(1)
+            down_move = low.shift(1) - low
 
-        # Calculate remaining values using Wilder's smoothing method
-        for i in range(atr_period, len(true_range)):
-            smoothed_tr.iloc[i] = smoothed_tr.iloc[i-1] - (smoothed_tr.iloc[i-1] / atr_period) + true_range.iloc[i]
-            smoothed_plus_dm.iloc[i] = smoothed_plus_dm.iloc[i-1] - (smoothed_plus_dm.iloc[i-1] / atr_period) + plus_dm.iloc[i]
-            smoothed_minus_dm.iloc[i] = smoothed_minus_dm.iloc[i-1] - (smoothed_minus_dm.iloc[i-1] / atr_period) + minus_dm.iloc[i]
+            # Positive Directional Movement (+DM)
+            plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+            plus_dm = pd.Series(plus_dm, index=high.index)
 
-        # Calculate Directional Indicators
-        plus_di = (smoothed_plus_dm / smoothed_tr) * 100
-        minus_di = (smoothed_minus_dm / smoothed_tr) * 100
+            # Negative Directional Movement (-DM)
+            minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+            minus_dm = pd.Series(minus_dm, index=high.index)
 
-        # Calculate Directional Movement Index (DX)
-        dx_divisor = (np.abs(plus_di) + np.abs(minus_di)).replace(0, np.nan)
-        dx = (np.abs(plus_di - minus_di) / dx_divisor) * 100
+            # Smoothed True Range and Directional Movements (Wilder's Method)
+            smoothed_tr = pd.Series(index=true_range.index, dtype=float)
+            smoothed_plus_dm = pd.Series(index=plus_dm.index, dtype=float)
+            smoothed_minus_dm = pd.Series(index=minus_dm.index, dtype=float)
 
-        # Calculate ADX (Average Directional Index)
-        adx = pd.Series(index=dx.index, dtype=float)
-        adx.iloc[atr_period*2-1] = dx[atr_period:atr_period*2].mean()  # Initial ADX
+            # Initialize first values
+            smoothed_tr.iloc[atr_period-1] = true_range[:atr_period].sum()
+            smoothed_plus_dm.iloc[atr_period-1] = plus_dm[:atr_period].sum()
+            smoothed_minus_dm.iloc[atr_period-1] = minus_dm[:atr_period].sum()
 
-        # Smoothed ADX calculation (Wilder's method)
-        for i in range(atr_period*2, len(dx)):
-            adx.iloc[i] = ((adx.iloc[i-1] * (atr_period - 1)) + dx.iloc[i]) / atr_period
+            # Calculate remaining values using Wilder's smoothing method
+            for i in range(atr_period, len(true_range)):
+                smoothed_tr.iloc[i] = smoothed_tr.iloc[i-1] - (smoothed_tr.iloc[i-1] / atr_period) + true_range.iloc[i]
+                smoothed_plus_dm.iloc[i] = smoothed_plus_dm.iloc[i-1] - (smoothed_plus_dm.iloc[i-1] / atr_period) + plus_dm.iloc[i]
+                smoothed_minus_dm.iloc[i] = smoothed_minus_dm.iloc[i-1] - (smoothed_minus_dm.iloc[i-1] / atr_period) + minus_dm.iloc[i]
 
-        # Assign to DataFrame
-        df["ADX14"] = adx
-        df["ADX_PLUS"] = plus_di
-        df["ADX_MINUS"] = minus_di
+            # Calculate Directional Indicators
+            plus_di = (smoothed_plus_dm / smoothed_tr) * 100
+            minus_di = (smoothed_minus_dm / smoothed_tr) * 100
+
+            # Calculate Directional Movement Index (DX)
+            dx_divisor = (np.abs(plus_di) + np.abs(minus_di)).replace(0, np.nan)
+            dx = (np.abs(plus_di - minus_di) / dx_divisor) * 100
+
+            # Calculate ADX (Average Directional Index)
+            adx = pd.Series(index=dx.index, dtype=float)
+            adx.iloc[atr_period*2-1] = dx[atr_period:atr_period*2].mean()  # Initial ADX
+
+            # Smoothed ADX calculation (Wilder's method)
+            for i in range(atr_period*2, len(dx)):
+                adx.iloc[i] = ((adx.iloc[i-1] * (atr_period - 1)) + dx.iloc[i]) / atr_period
+
+            # Assign to DataFrame
+            df["ADX14"] = adx
+            df["ADX_PLUS"] = plus_di
+            df["ADX_MINUS"] = minus_di
 
     # 12. Frekuensi Perdagangan (Trading Frequency)
     if need_indicator("TRADE_FREQUENCY") or need_indicator("HIGH_VOL_DAYS"):
